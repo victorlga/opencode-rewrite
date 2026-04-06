@@ -1,3 +1,4 @@
+# Clojure / JVM
 pom.xml
 pom.xml.asc
 *.jar
@@ -6,9 +7,37 @@ pom.xml.asc
 /classes/
 /target/
 /checkouts/
+
+# deps.edn
+.cpcache/
+**/.cpcache/
+
+# Leiningen (should never be used, but just in case)
 .lein-deps-sum
 .lein-repl-history
 .lein-plugins/
 .lein-failures
+
+# REPL
 .nrepl-port
-.cpcache/
+**/.nrepl-port
+
+# Portal
+.portal/
+
+# Editor
+.idea/
+*.iml
+.vscode/
+.calva/
+*.swp
+*~
+.#*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.local

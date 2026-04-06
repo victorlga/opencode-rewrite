@@ -1,0 +1,10 @@
+{:linters
+ {:unresolved-symbol {:level :error}
+  :unused-namespace {:level :warning}
+  :unused-binding {:level :warning}
+  :redundant-do {:level :warning}
+  :missing-docstring {:level :off}}
+
+ :lint-as
+ {integrant.core/init-key clojure.core/defmethod
+  integrant.core/halt-key! clojure.core/defmethod}}

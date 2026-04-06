@@ -1,0 +1,7 @@
+{:opencode
+ {:llm {:provider #or [#env OPENCODE_PROVIDER "anthropic"]
+        :api-key #env ANTHROPIC_API_KEY
+        :model #or [#env OPENCODE_MODEL "claude-sonnet-4-20250514"]}
+  :tools {:allowed #{:bash :read-file :write-file :edit-file :glob :grep}}
+  :ui {:type :repl}
+  :project {:directory #or [#env OPENCODE_PROJECT_DIR "."]}}}
