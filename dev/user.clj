@@ -2,16 +2,18 @@
   "REPL development helpers.
    Loaded automatically when starting with the :dev alias."
   (:require
-   [integrant.core :as ig]
-   [opencode.system :as system]
-   [opencode.config :as config]))
+   [opencode.config :as config]
+   [opencode.system :as system]))
 
 (defonce ^:private system-instance (atom nil))
 
 (defn start!
-  "Starts the Integrant system and stores it in the atom."
+  "Starts the Integrant system and stores it in the atom.
+   Halts any previously running system first to avoid resource leaks."
   []
-  (reset! system-instance (system/start!))
+  (swap! system-instance (fn [sys]
+                           (when sys (system/stop! sys))
+                           (system/start!)))
   :started)
 
 (defn stop!
