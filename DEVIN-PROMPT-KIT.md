@@ -253,16 +253,21 @@ Run them in order. One session per prompt. Each produces a PR.
 
 | Session | Description | Est. ACU | Running Total |
 |---------|-------------|----------|---------------|
-| 1 | Skeleton + Config | 5-8 | 5-8 |
-| 2 | Messages + Event Bus | 5-8 | 10-16 |
-| 3 | Anthropic + Streaming | 8-10 | 18-26 |
-| 4 | Tool System | 8-10 | 26-36 |
-| 5 | Agentic Loop (MVP) | 8-10 | 34-46 |
-| 6 | Context Management | 5-8 | 39-54 |
-| Buffer for retries | ~1 failed session | 8-10 | 47-64 |
+| 1 | Config system | 3-5 | 3-5 |
+| 2 | Message + Session + Event bus | 5-7 | 8-12 |
+| 3 | Provider protocol + Model registry + SSE | 5-7 | 13-19 |
+| 4 | Anthropic API implementation | 5-7 | 18-26 |
+| 5 | Tool framework + Read/Write/Glob | 5-7 | 23-33 |
+| 6 | Edit + Bash + Grep tools | 5-7 | 28-40 |
+| 7 | UI adapter + Persistence + Permission | 5-7 | 33-47 |
+| 8 | Agent loop + System prompt | 5-7 | 38-54 |
+| 9 | Main entry + system wiring (MVP) | 3-5 | 41-59 |
+| 10 | Context management + compaction | 3-5 | 44-64 |
+| Buffer for retries | ~1 retry | 5-7 | 49-71 |
 
-**Total estimate: 47-64 ACU for core MVP + context management**
-Your 60 ACU budget fits if sessions stay focused. Budget for 1 retry.
+**Total estimate: 49-71 ACU for core MVP + context management**
+10 focused sessions (was 6 large). Smaller sessions = cheaper retries, fewer failures.
+Budget for 1 retry. Sessions 1-9 = MVP, Session 10 = post-MVP.
 
 ## PART 5: WORKFLOW CHECKLIST
 

@@ -41,3 +41,4 @@ Thumbs.db
 # Environment / secrets
 .env
 .env.local
+.clj-kondo/.cache/
