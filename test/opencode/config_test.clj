@@ -2,6 +2,7 @@
   "Tests for opencode.config — config loading, Malli validation, and Integrant component."
   (:require
    [clojure.test :refer [deftest testing is]]
+   [cognitect.anomalies :as anom]
    [matcher-combinators.test :refer [match?]]
    [opencode.config :as config]
    [integrant.core :as ig]
@@ -79,11 +80,20 @@
                           :project {:directory "."}}}]
       (is (= cfg (config/validate-config cfg))))))
 
-(deftest validate-config-throws-on-invalid
-  (testing "validate-config throws ex-info on invalid config"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo
-                          #"Invalid configuration"
-                          (config/validate-config {:bad "config"})))))
+(deftest validate-config-returns-anomaly-on-invalid
+  (testing "validate-config returns an anomaly map on invalid config"
+    (let [result (config/validate-config {:bad "config"})]
+      (is (config/anomaly? result))
+      (is (match? {::anom/category ::anom/incorrect
+                   ::anom/message  "Invalid configuration"}
+                  result)))))
+
+(deftest load-and-validate-throws-on-invalid
+  (testing "load-and-validate! throws ex-info when config is invalid"
+    (let [bad-edn "{:opencode {:llm {:provider 123}}}"]
+      (is (thrown-with-msg? clojure.lang.ExceptionInfo
+                            #"Invalid configuration"
+                            (config/load-and-validate! (java.io.StringReader. bad-edn)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Integrant component tests
