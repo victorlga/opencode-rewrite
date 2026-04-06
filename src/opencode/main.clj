@@ -20,25 +20,40 @@
        "Options:\n"
        summary))
 
+;; Thin CLI output adapter — all user-facing output goes through here.
+;; Will be replaced by a proper UI adapter protocol in a future session.
+
+(defn- cli-print!
+  "Writes a message to stdout via the CLI output channel.
+   Adapter seam: will be replaced by the UI protocol (AGENTS.md compliance)."
+  [msg]
+  (println msg))
+
+(defn- cli-error!
+  "Writes an error message to stderr via the CLI output channel."
+  [msg]
+  (binding [*out* *err*]
+    (println msg)))
+
 (defn -main
   "Application entry point. Parses CLI args, then starts the system."
   [& args]
   (let [{:keys [options summary errors]} (cli/parse-opts args cli-options)]
     (cond
       errors
-      (do (doseq [e errors] (println e))
+      (do (doseq [e errors] (cli-error! e))
           (System/exit 1))
 
       (:help options)
-      (println (usage summary))
+      (cli-print! (usage summary))
 
       (:version options)
-      (println (str "opencode-rewrite " version))
+      (cli-print! (str "opencode-rewrite " version))
 
       :else
       (do
         (system/start!)
-        (println "opencode-rewrite started")))))
+        (cli-print! "opencode-rewrite started")))))
 
 (comment
   ;; REPL exploration

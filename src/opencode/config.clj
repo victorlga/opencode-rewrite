@@ -5,6 +5,7 @@
   (:require
    [aero.core :as aero]
    [clojure.java.io :as io]
+   [cognitect.anomalies :as anom]
    [integrant.core :as ig]
    [malli.core :as m]
    [malli.error :as me]))
@@ -60,24 +61,33 @@
   ([source]
    (aero/read-config source)))
 
+(defn anomaly?
+  "Returns true if the given value is a cognitect anomaly map."
+  [x]
+  (and (map? x) (contains? x ::anom/category)))
+
 (defn validate-config
   "Validates the given config map against the Config schema.
-   Returns the config if valid, throws ex-info with explanation on failure."
+   Returns the config if valid, or an anomaly map on failure."
   [config]
   (if (m/validate Config config)
     config
-    (throw (ex-info "Invalid configuration"
-                    {:errors (me/humanize (m/explain Config config))
-                     :config config}))))
+    {::anom/category ::anom/incorrect
+     ::anom/message  "Invalid configuration"
+     :errors         (me/humanize (m/explain Config config))
+     :config         config}))
 
 (defn load-and-validate!
   "Loads config from the default resource and validates it.
-   Returns the validated config map or throws on invalid config."
+   Returns the validated config map, or throws ex-info if config is invalid
+   (invalid config at startup is a fatal programming/deployment error)."
   ([]
    (load-and-validate! (io/resource "config.edn")))
   ([source]
-   (-> (load-config source)
-       validate-config)))
+   (let [result (-> (load-config source) validate-config)]
+     (if (anomaly? result)
+       (throw (ex-info (::anom/message result) result))
+       result))))
 
 ;; ---------------------------------------------------------------------------
 ;; Integrant component
@@ -94,7 +104,7 @@
   (validate-config (load-config))
   (load-and-validate!)
 
-  ;; Test with bad config
-  (m/explain Config {:opencode {:llm {:provider 123}}})
-  (me/humanize (m/explain Config {:opencode {:llm {:provider 123}}}))
+  ;; Test with bad config — returns anomaly map
+  (validate-config {:bad "config"})
+  (anomaly? (validate-config {:bad "config"}))
   ,)
