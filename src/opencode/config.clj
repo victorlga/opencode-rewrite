@@ -18,7 +18,7 @@
   "Schema for LLM provider configuration."
   [:map
    [:provider :string]
-   [:api-key {:optional true} [:maybe :string]]
+   [:api-key [:maybe :string]]
    [:model :string]])
 
 (def ToolsConfig

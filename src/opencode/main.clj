@@ -10,7 +10,8 @@
 (def cli-options
   "CLI option specifications for tools.cli."
   [["-h" "--help" "Show this help message"]
-   ["-v" "--version" "Print version and exit"]])
+   ["-v" "--version" "Print version and exit"]
+   [nil "--dangerously-skip-permissions" "Skip all permission checks (YOLO mode)"]])
 
 (defn- usage
   "Returns a usage summary string."

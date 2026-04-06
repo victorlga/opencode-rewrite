@@ -24,26 +24,38 @@
       (is (true? (m/validate config/Config good-config))))))
 
 (deftest config-schema-rejects-bad-config
-  (testing "missing required fields are rejected"
-    (is (false? (m/validate config/Config {}))))
+  (testing "missing :llm key is rejected"
+    (let [result (config/validate-config {:opencode {:tools {:allowed #{:bash}}
+                                                     :ui {:type :repl}
+                                                     :project {:directory "."}}})] 
+      (is (match? {::anom/category ::anom/incorrect} result))))
+
+  (testing "wrong type for :model (integer instead of string) is rejected"
+    (let [result (config/validate-config {:opencode
+                                          {:llm     {:provider "anthropic"
+                                                     :model    42}
+                                           :tools   {:allowed #{:bash}}
+                                           :ui      {:type :repl}
+                                           :project {:directory "."}}})] 
+      (is (match? {::anom/category ::anom/incorrect} result))))
 
   (testing "wrong type for provider is rejected"
-    (is (false? (m/validate config/Config
-                            {:opencode
-                             {:llm     {:provider 123
-                                        :model    "claude-sonnet-4-20250514"}
-                              :tools   {:allowed #{:bash}}
-                              :ui      {:type :repl}
-                              :project {:directory "."}}}))))
+    (let [result (config/validate-config {:opencode
+                                          {:llm     {:provider 123
+                                                     :model    "claude-sonnet-4-20250514"}
+                                           :tools   {:allowed #{:bash}}
+                                           :ui      {:type :repl}
+                                           :project {:directory "."}}})] 
+      (is (match? {::anom/category ::anom/incorrect} result))))
 
   (testing "invalid UI type is rejected"
-    (is (false? (m/validate config/Config
-                            {:opencode
-                             {:llm     {:provider "anthropic"
-                                        :model    "claude-sonnet-4-20250514"}
-                              :tools   {:allowed #{:bash}}
-                              :ui      {:type :invalid}
-                              :project {:directory "."}}})))))
+    (let [result (config/validate-config {:opencode
+                                          {:llm     {:provider "anthropic"
+                                                     :model    "claude-sonnet-4-20250514"}
+                                           :tools   {:allowed #{:bash}}
+                                           :ui      {:type :invalid}
+                                           :project {:directory "."}}})] 
+      (is (match? {::anom/category ::anom/incorrect} result)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Config loading tests
@@ -74,6 +86,7 @@
 (deftest validate-config-returns-valid
   (testing "validate-config returns the config when valid"
     (let [cfg {:opencode {:llm     {:provider "anthropic"
+                                    :api-key  nil
                                     :model    "claude-sonnet-4-20250514"}
                           :tools   {:allowed #{:bash}}
                           :ui      {:type :repl}
