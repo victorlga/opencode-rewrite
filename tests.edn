@@ -1,0 +1,8 @@
+#kaocha/v1
+{:tests [{:id          :unit
+          :type        :kaocha.type/clojure.test
+          :source-paths ["src"]
+          :test-paths  ["test"]
+          :ns-patterns ["-test$"]}]
+ :plugins [:kaocha.plugin/filter]
+ :reporter [kaocha.report/dots]}
