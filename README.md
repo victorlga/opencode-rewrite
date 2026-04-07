@@ -9,6 +9,7 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
 **Built so far:**
 - **Session 1** — Config system: Aero-based EDN config loading, Malli schema validation, Integrant lifecycle, CLI entry point with `tools.cli`
 - **Session 2** — Core data model: Message schemas and constructors, session manipulation functions, core.async pub/sub event bus
+- **Session 3** — LLM provider abstraction: Protocol definition, model metadata registry, SSE stream parsing utilities
 
 ## How It Works
 
@@ -26,13 +27,17 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
                                 │
          ┌──────────────────────┼──────────────────┐
          │                      │                   │
-   domain/message.clj    domain/session.clj    (future: adapters)
-   (Malli schemas,       (pure transforms,
-    constructors)         token tracking)
+   domain/message.clj    domain/session.clj    adapter/llm/
+   (Malli schemas,       (pure transforms,     ├── provider.clj (protocol)
+    constructors)         token tracking)       └── model_registry.clj
+                                                    (model metadata)
+                         logic/streaming.clj
+                         (SSE parsing → core.async channels)
 ```
 
 - **Domain layer** (`opencode.domain.*`) — Pure functions and Malli schemas. No I/O, no side effects. Messages are plain maps with namespaced keywords (`:message/role`, `:session/id`). Constructors validate via Malli and return anomaly maps on invalid data.
-- **Logic layer** (`opencode.logic.*`) — Orchestration with managed side effects. The event bus uses core.async channels with sliding buffers for pub/sub.
+- **Adapter layer** (`opencode.adapter.*`) — Side-effecting code at the edges. The `LLMProvider` protocol defines the interface for LLM completions and streaming. The model registry stores static model metadata (context windows, costs, capabilities).
+- **Logic layer** (`opencode.logic.*`) — Orchestration with managed side effects. The event bus uses core.async channels with sliding buffers for pub/sub. SSE streaming utilities parse Anthropic server-sent events into channel-based event streams.
 - **Config** — EDN files read by Aero with `#env` tag literals. Malli validates at startup; invalid config returns cognitect anomaly maps.
 
 ## How to Run
@@ -58,10 +63,9 @@ clj -M:test
 clj-kondo --lint src test
 ```
 
-## Recent Changes (Session 2)
+## Recent Changes (Session 3)
 
-- Added `opencode.domain.message` — Malli schemas for Role, ToolCall, UserMessage, AssistantMessage, ToolResultMessage, SystemMessage, and a Message union. Constructor functions (`system-message`, `user-message`, `assistant-message`, `tool-result`) validate with Malli and return cognitect anomaly maps on invalid data.
-- Added `opencode.domain.session` — Session schema and pure functions: `create-session`, `append-message`, `get-messages`, `session-token-count`, `update-tokens`.
-- Added `opencode.logic.event-bus` — core.async pub/sub event bus with `create-bus`, `publish!`, `subscribe!`, `unsubscribe!`, `close-bus!`. Wired as Integrant component `:opencode/event-bus` with `init-key`/`halt-key!`.
-- Updated `system.clj` to include `:opencode/event-bus {}` in the default system config.
-- Comprehensive tests for all three namespaces using `matcher-combinators`.
+- Added `opencode.adapter.llm.provider` — `LLMProvider` protocol with `complete`, `stream`, and `list-models` methods. `CompletionOpts` Malli schema for request options (system prompt, tools, max-tokens, temperature).
+- Added `opencode.adapter.llm.model-registry` — Static model metadata for Claude Sonnet 4 and Claude Haiku 3.5. `ModelInfo` Malli schema. Lookup functions: `get-model` (returns anomaly for unknown IDs), `models-for-provider`, `all-models`, `validate-model`.
+- Added `opencode.logic.streaming` — SSE parsing for Anthropic Messages API. `parse-sse-event` parses individual events, `read-sse-events` reads a BufferedReader as a lazy seq, `sse-events->channel` wraps it in `async/thread` for channel-based consumption. Ping events are filtered out.
+- Comprehensive tests for model registry and streaming using `matcher-combinators`.
