@@ -23,7 +23,7 @@
    Returns a map {:sse/type <keyword> :sse/data <parsed-json>}, or nil for ping events."
   [event-type data-str]
   (when-not (= event-type "ping")
-    {:sse/type (keyword event-type)
+    {:sse/type (keyword (str/replace event-type "_" "-"))
      :sse/data (json/read-value data-str object-mapper)}))
 
 ;; ---------------------------------------------------------------------------

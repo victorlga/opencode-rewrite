@@ -21,16 +21,16 @@
   (testing "handles content_block_delta with text delta"
     (let [data "{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}"
           evt  (streaming/parse-sse-event "content_block_delta" data)]
-      (is (match? {:sse/type :content_block_delta
-                   :sse/data {:type  "content_block_delta"
+      (is (match? {      :sse/type :content-block-delta
+                         :sse/data {:type  "content_block_delta"
                               :delta {:type "text_delta" :text "Hello"}}}
                   evt))))
 
   (testing "handles message_start with message metadata"
     (let [data "{\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\",\"model\":\"claude-sonnet-4-20250514\"}}"
           evt  (streaming/parse-sse-event "message_start" data)]
-      (is (match? {:sse/type :message_start
-                   :sse/data {:type    "message_start"
+      (is (match? {      :sse/type :message-start
+                         :sse/data {:type    "message_start"
                               :message {:id    "msg_123"
                                         :model "claude-sonnet-4-20250514"}}}
                   evt))))
@@ -47,29 +47,29 @@
   (testing "handles message_delta"
     (let [data "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}"
           evt  (streaming/parse-sse-event "message_delta" data)]
-      (is (match? {:sse/type :message_delta
-                   :sse/data {:delta {:stop_reason "end_turn"}}}
+      (is (match? {      :sse/type :message-delta
+                         :sse/data {:delta {:stop_reason "end_turn"}}}
                   evt))))
 
   (testing "handles content_block_start"
     (let [data "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}"
           evt  (streaming/parse-sse-event "content_block_start" data)]
-      (is (match? {:sse/type :content_block_start
-                   :sse/data {:index         0
+      (is (match? {      :sse/type :content-block-start
+                         :sse/data {:index         0
                               :content_block {:type "text"}}}
                   evt))))
 
   (testing "handles content_block_stop"
     (let [data "{\"type\":\"content_block_stop\",\"index\":0}"
           evt  (streaming/parse-sse-event "content_block_stop" data)]
-      (is (match? {:sse/type :content_block_stop
-                   :sse/data {:index 0}}
+      (is (match? {      :sse/type :content-block-stop
+                         :sse/data {:index 0}}
                   evt))))
 
   (testing "handles message_stop"
     (let [data "{\"type\":\"message_stop\"}"
           evt  (streaming/parse-sse-event "message_stop" data)]
-      (is (match? {:sse/type :message_stop} evt))))
+      (is (match? {:sse/type :message-stop} evt))))
 
   (testing "returns nil for ping events"
     (is (nil? (streaming/parse-sse-event "ping" "{}")))))
@@ -91,11 +91,11 @@
                       "\n")
           events (vec (streaming/read-sse-events (->reader input)))]
       (is (= 3 (count events)))
-      (is (match? {:sse/type :message_start} (first events)))
-      (is (match? {:sse/type :content_block_delta
-                   :sse/data {:delta {:text "Hi"}}}
-                  (second events)))
-      (is (match? {:sse/type :message_stop} (nth events 2)))))
+            (is (match? {:sse/type :message-start} (first events)))
+            (is (match? {:sse/type :content-block-delta
+                         :sse/data {:delta {:text "Hi"}}}
+                        (second events)))
+            (is (match? {:sse/type :message-stop} (nth events 2)))))
 
   (testing "skips ping events in the stream"
     (let [input  (str "event: ping\n"
@@ -106,7 +106,7 @@
                       "\n")
           events (vec (streaming/read-sse-events (->reader input)))]
       (is (= 1 (count events)))
-      (is (match? {:sse/type :content_block_delta} (first events)))))
+      (is (match? {:sse/type :content-block-delta} (first events)))))
 
   (testing "handles empty input"
     (is (match? [] (vec (streaming/read-sse-events (->reader ""))))))
@@ -137,11 +137,11 @@
           [e2 _] (async/alts!! [ch (async/timeout 2000)])
           [e3 _] (async/alts!! [ch (async/timeout 2000)])
           [e4 c] (async/alts!! [ch (async/timeout 2000)])]
-      (is (match? {:sse/type :message_start} e1))
-      (is (match? {:sse/type :content_block_delta
-                   :sse/data {:delta {:text "World"}}}
-                  e2))
-      (is (match? {:sse/type :message_stop} e3))
+            (is (match? {:sse/type :message-start} e1))
+            (is (match? {:sse/type :content-block-delta
+                         :sse/data {:delta {:text "World"}}}
+                        e2))
+            (is (match? {:sse/type :message-stop} e3))
       ;; Channel should be closed after all events — nil from ch
       (is (nil? e4))
       (is (= ch c) "should return from ch (closed), not timeout")))
@@ -180,8 +180,8 @@
                       "\n")
           ch     (streaming/sse-events->channel! (->reader input))
           [e1 _] (async/alts!! [ch (async/timeout 2000)])]
-      (is (match? {:sse/type :message_start} e1))
-      ;; Close channel — loop should stop putting on next >!! attempt
+            (is (match? {:sse/type :message-start} e1))
+            ;; Close channel — loop should stop putting on next >!! attempt
       (async/close! ch)
       ;; Drain any events that were already buffered before close
       (loop []
