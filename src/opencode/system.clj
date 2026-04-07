@@ -1,9 +1,10 @@
 (ns opencode.system
   "Integrant system map for opencode.
    Defines the system configuration and provides start!/stop! helpers.
-   Will be extended in future sessions with event-bus, LLM providers, etc."
+   Components are wired via Integrant refs for dependency injection."
   (:require
    [integrant.core :as ig]
+   [opencode.adapter.llm.anthropic]
    [opencode.config]
    [opencode.logic.event-bus]))
 
@@ -14,8 +15,9 @@
 (def default-system-config
   "Default Integrant system configuration map.
    Each key corresponds to a component initialized via ig/init-key."
-  {:opencode/config {}
-   :opencode/event-bus {}})
+  {:opencode/config    {}
+   :opencode/event-bus  {}
+   :opencode/llm-provider {:config (ig/ref :opencode/config)}})
 
 (defn system-config
   "Returns the system configuration, optionally merging overrides."
