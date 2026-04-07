@@ -37,12 +37,14 @@
 
 (deftest close-bus-test
   (testing "close-bus! causes subscriber channel to close"
-    (let [b      (bus/create-bus)
-          sub-ch (bus/subscribe! b :tool/executing 16)]
+    (let [b          (bus/create-bus)
+          sub-ch     (bus/subscribe! b :tool/executing 16)
+          timeout-ch (async/timeout 1000)]
       (bus/close-bus! b)
-      ;; A closed channel returns nil
-      (let [[event _] (async/alts!! [sub-ch (async/timeout 1000)])]
-        (is (nil? event) "subscriber channel should be closed")))))
+      ;; A closed channel returns nil; ensure it was the subscriber, not the timeout
+      (let [[event ch] (async/alts!! [sub-ch timeout-ch])]
+        (is (nil? event) "subscriber channel should be closed")
+        (is (= sub-ch ch) "alts!! should return subscriber channel, not timeout")))))
 
 (deftest unsubscribe-test
   (testing "unsubscribed channel no longer receives events"

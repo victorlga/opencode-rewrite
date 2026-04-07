@@ -1,6 +1,8 @@
 (ns opencode.domain.session
-  "Pure functions for session data manipulation.
-   Sessions are plain maps with namespaced keywords — no side effects, no I/O."
+  "Functions for session data manipulation.
+   Sessions are plain maps with namespaced keywords.
+   Note: create-session uses UUID/randomUUID and Instant/now for convenience;
+   all other functions are pure transforms."
   (:require
    [cognitect.anomalies :as anom]
    [malli.core :as m]
@@ -52,9 +54,14 @@
 ;; ---------------------------------------------------------------------------
 
 (defn append-message
-  "Returns session with message conj'd to :session/messages."
+  "Returns session with message conj'd to :session/messages.
+   Returns an anomaly map if msg does not validate against Message schema."
   [session msg]
-  (update session :session/messages conj msg))
+  (if (m/validate message/Message msg)
+    (update session :session/messages conj msg)
+    {::anom/category ::anom/incorrect
+     ::anom/message  "Invalid message data"
+     :errors         (me/humanize (m/explain message/Message msg))}))
 
 (defn get-messages
   "Returns the :session/messages vector."

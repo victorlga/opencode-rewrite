@@ -1,6 +1,7 @@
 (ns opencode.domain.session-test
   (:require
    [clojure.test :refer [deftest is testing]]
+   [cognitect.anomalies :as anom]
    [malli.core :as m]
    [matcher-combinators.test :refer [match?]]
    [opencode.domain.message :as message]
@@ -37,7 +38,13 @@
                    (session/append-message msg1)
                    (session/append-message msg2)
                    (session/append-message msg3))]
-      (is (match? [msg1 msg2 msg3] (session/get-messages s'))))))
+      (is (match? [msg1 msg2 msg3] (session/get-messages s')))))
+
+  (testing "append-message returns anomaly for invalid message"
+    (let [s (session/create-session "gpt-4")]
+      (is (match? {::anom/category ::anom/incorrect
+                   ::anom/message  "Invalid message data"}
+                  (session/append-message s {:not "a valid message"}))))))
 
 (deftest get-messages-test
   (testing "get-messages on new session returns empty vector"
