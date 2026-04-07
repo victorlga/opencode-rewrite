@@ -74,8 +74,7 @@
     config
     {::anom/category ::anom/incorrect
      ::anom/message  "Invalid configuration"
-     :errors         (me/humanize (m/explain Config config))
-     :config         config}))
+     :errors         (me/humanize (m/explain Config config))}))
 
 (defn load-and-validate!
   "Loads config from the default resource and validates it.

@@ -11,17 +11,19 @@
   "Starts the Integrant system and stores it in the atom.
    Halts any previously running system first to avoid resource leaks."
   []
-  (swap! system-instance (fn [sys]
-                           (when sys (system/stop! sys))
-                           (system/start!)))
+  (locking system-instance
+    (when-let [old @system-instance]
+      (system/stop! old))
+    (reset! system-instance (system/start!)))
   :started)
 
 (defn stop!
   "Stops the running Integrant system."
   []
-  (when-let [sys @system-instance]
-    (system/stop! sys)
-    (reset! system-instance nil))
+  (locking system-instance
+    (when-let [sys @system-instance]
+      (system/stop! sys)
+      (reset! system-instance nil)))
   :stopped)
 
 (defn restart!

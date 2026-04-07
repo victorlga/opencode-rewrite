@@ -33,6 +33,7 @@
   (testing "wrong type for :model (integer instead of string) is rejected"
     (let [result (config/validate-config {:opencode
                                           {:llm     {:provider "anthropic"
+                                                     :api-key  nil
                                                      :model    42}
                                            :tools   {:allowed #{:bash}}
                                            :ui      {:type :repl}
@@ -42,6 +43,7 @@
   (testing "wrong type for provider is rejected"
     (let [result (config/validate-config {:opencode
                                           {:llm     {:provider 123
+                                                     :api-key  nil
                                                      :model    "claude-sonnet-4-20250514"}
                                            :tools   {:allowed #{:bash}}
                                            :ui      {:type :repl}
@@ -51,6 +53,7 @@
   (testing "invalid UI type is rejected"
     (let [result (config/validate-config {:opencode
                                           {:llm     {:provider "anthropic"
+                                                     :api-key  nil
                                                      :model    "claude-sonnet-4-20250514"}
                                            :tools   {:allowed #{:bash}}
                                            :ui      {:type :invalid}
@@ -63,21 +66,21 @@
 
 (deftest load-config-from-resource
   (testing "loads the default config.edn from resources"
-    (let [config (config/load-config)]
+    (let [cfg (config/load-config)]
       (is (match? {:opencode {:llm {:provider "anthropic"
                                     :model    "claude-sonnet-4-20250514"}
                               :tools {:allowed #{:bash :read-file :write-file
                                                  :edit-file :glob :grep}}
                               :ui {:type :repl}
                               :project {:directory "."}}}
-                  config)))))
+                  cfg)))))
 
 (deftest load-config-from-edn-string
   (testing "loads config from an EDN string via Aero"
     (let [edn-str "{:opencode {:llm {:provider \"openai\" :model \"gpt-4\"} :tools {:allowed #{:bash}} :ui {:type :tui} :project {:directory \"/tmp\"}}}"
-          config  (config/load-config (java.io.StringReader. edn-str))]
+          cfg     (config/load-config (java.io.StringReader. edn-str))]
       (is (match? {:opencode {:llm {:provider "openai" :model "gpt-4"}}}
-                  config)))))
+                  cfg)))))
 
 ;; ---------------------------------------------------------------------------
 ;; Validate config tests
