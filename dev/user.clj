@@ -1,41 +1,49 @@
 (ns user
-  "REPL development entry point."
-  (:require [clojure.java.io :as io]
-            [aero.core :as aero]
-            [integrant.core :as ig]))
+  "REPL development helpers.
+   Loaded automatically when starting with the :dev alias."
+  (:require
+   [opencode.config :as config]
+   [opencode.system :as system]))
 
-(defonce system nil)
+(defonce ^:private system-instance (atom nil))
 
 (defn start!
-  "Start the system for REPL development."
+  "Starts the Integrant system and stores it in the atom.
+   Halts any previously running system first to avoid resource leaks."
   []
-  (alter-var-root #'system
-    (fn [sys]
-      (when sys (ig/halt! sys))
-      (-> "config.edn"
-          (io/resource)
-          (aero/read-config)
-          (ig/prep)
-          (ig/init)))))
+  (locking system-instance
+    (when-let [old @system-instance]
+      (system/stop! old))
+    (reset! system-instance (system/start!)))
+  :started)
 
 (defn stop!
-  "Stop the running system."
+  "Stops the running Integrant system."
   []
-  (alter-var-root #'system
-    (fn [sys]
-      (when sys (ig/halt! sys))
-      nil)))
+  (locking system-instance
+    (when-let [sys @system-instance]
+      (system/stop! sys)
+      (reset! system-instance nil)))
+  :stopped)
 
 (defn restart!
-  "Restart the system."
+  "Stops and restarts the system."
   []
   (stop!)
   (start!))
 
+(defn system
+  "Returns the current running system map."
+  []
+  @system-instance)
+
 (comment
-  ;; REPL workflow:
+  ;; REPL workflow
   (start!)
+  (system)
   (stop!)
   (restart!)
-  system
-  )
+
+  ;; Inspect config directly
+  (config/load-config)
+  ,)
