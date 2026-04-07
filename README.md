@@ -1,6 +1,6 @@
 # opencode-rewrite
 
-A data-oriented Clojure reimplementation of the [OpenCode](https://github.com/victorlga/opencode) AI coding agent, inspired by how Nubank builds software: functional, REPL-driven, and data-first.
+A data-oriented Clojure reimplementation of the [OpenCode](https://github.com/victorlga/opencode) AI coding agent. Functional, REPL-driven, and data-first.
 
 ## Overview
 
