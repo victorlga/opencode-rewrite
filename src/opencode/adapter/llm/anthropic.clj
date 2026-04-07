@@ -11,6 +11,8 @@
    [hato.client :as hc]
    [integrant.core :as ig]
    [jsonista.core :as json]
+   [malli.core :as m]
+   [malli.error :as me]
    [opencode.adapter.llm.model-registry :as registry]
    [opencode.adapter.llm.provider :as provider]
    [opencode.domain.message :as message]
@@ -74,14 +76,38 @@
                 :tool_use_id (:message/tool-call-id msg)
                 :content     (:message/content msg)}]}))
 
+(defn- merge-consecutive-same-role
+  "Merges consecutive messages with the same :role into single messages.
+   Required because the Anthropic API enforces strict user/assistant turn alternation,
+   but our domain model produces separate tool-result messages (each with role \"user\")
+   when an assistant invokes multiple tools. Consecutive same-role messages have their
+   :content arrays concatenated (string content is wrapped in a vector first)."
+  [msgs]
+  (reduce
+   (fn [acc msg]
+     (let [prev (peek acc)]
+       (if (and prev (= (:role prev) (:role msg)))
+         (let [prev-content (if (vector? (:content prev))
+                              (:content prev)
+                              [{:type "text" :text (:content prev)}])
+               msg-content  (if (vector? (:content msg))
+                              (:content msg)
+                              [{:type "text" :text (:content msg)}])]
+           (conj (pop acc) (assoc prev :content (into prev-content msg-content))))
+         (conj acc msg))))
+   []
+   msgs))
+
 (defn messages->anthropic
   "Converts a vector of domain messages to Anthropic wire format.
    Returns a map with :messages (converted messages, system filtered out)
-   and :system (system message content string, or nil)."
+   and :system (system message content string, or nil).
+   Consecutive same-role messages are merged to satisfy Anthropic's turn alternation."
   [messages]
   (let [system-msg  (first (filter #(= :system (:message/role %)) messages))
         other-msgs  (remove #(= :system (:message/role %)) messages)]
-    {:messages (into [] (keep convert-message) other-msgs)
+    {:messages (merge-consecutive-same-role
+                (into [] (keep convert-message) other-msgs))
      :system   (:message/content system-msg)}))
 
 ;; ---------------------------------------------------------------------------
@@ -160,8 +186,8 @@
 
    Domain stream event types:
      :text-delta    — {:type :text-delta :text \"...\"}
-     :tool-call     — {:type :tool-call :tool-call {...}}
      :done          — {:type :done :message <assistant-message>}
+                       (tool calls are accumulated and included in the :done message)
      :error         — {:type :error :error <anomaly-map>}"
   [sse-ch out-ch]
   (async/thread
@@ -282,6 +308,29 @@
         (async/close! out-ch)))))
 
 ;; ---------------------------------------------------------------------------
+;; Input validation (AGENTS.md: "NEVER skip Malli validation at adapter boundaries")
+;; ---------------------------------------------------------------------------
+
+(def ^:private Messages
+  "Schema for the messages vector passed to complete/stream."
+  [:vector message/Message])
+
+(defn- validate-inputs
+  "Validates messages and opts at the adapter boundary. Returns nil if valid,
+   or an anomaly map if validation fails."
+  [messages opts]
+  (cond
+    (not (m/validate Messages messages))
+    {::anom/category ::anom/incorrect
+     ::anom/message  "Invalid messages"
+     :errors         (me/humanize (m/explain Messages messages))}
+
+    (and (some? opts) (not (m/validate provider/CompletionOpts opts)))
+    {::anom/category ::anom/incorrect
+     ::anom/message  "Invalid completion options"
+     :errors         (me/humanize (m/explain provider/CompletionOpts opts))}))
+
+;; ---------------------------------------------------------------------------
 ;; AnthropicProvider record + LLMProvider implementation
 ;; ---------------------------------------------------------------------------
 
@@ -289,61 +338,68 @@
   provider/LLMProvider
 
   (complete [_this messages opts]
-    (try
-      (let [body     (build-request-body model-id messages opts)
-            json-body (json/write-value-as-string body)
-            response (hc/post api-url
-                              {:headers      (request-headers api-key)
-                               :body         json-body
-                               :http-client  http-client
-                               :as           :string
-                               :throw-exceptions? false})
-            status   (:status response)]
-        (if (<= 200 status 299)
-          (let [parsed (json/read-value (:body response) object-mapper)]
-            (anthropic-response->message parsed))
-          {::anom/category (status->anomaly-category status)
-           ::anom/message  (str "Anthropic API error (HTTP " status ")")
-           :http/status    status
-           :http/body      (:body response)}))
-      (catch Exception e
-        {::anom/category ::anom/fault
-         ::anom/message  (ex-message e)})))
-
-  (stream [_this messages opts]
-    (try
-      (let [body       (assoc (build-request-body model-id messages opts)
-                              :stream true)
-            json-body  (json/write-value-as-string body)
-            response   (hc/post api-url
+    (if-let [validation-error (validate-inputs messages opts)]
+      validation-error
+      (try
+        (let [body     (build-request-body model-id messages opts)
+              json-body (json/write-value-as-string body)
+              response (hc/post api-url
                                 {:headers      (request-headers api-key)
                                  :body         json-body
                                  :http-client  http-client
-                                 :as           :stream
+                                 :as           :string
                                  :throw-exceptions? false})
-            status     (:status response)]
-        (if (<= 200 status 299)
-          (let [reader  (BufferedReader. (InputStreamReader. (:body response) "UTF-8"))
-                sse-ch  (streaming/sse-events->channel! reader)
-                out-ch  (async/chan (async/buffer 64))]
-            (process-stream-events! sse-ch out-ch)
-            out-ch)
-          (let [err-ch (async/chan 1)
-                body-str (slurp (:body response))]
+              status   (:status response)]
+          (if (<= 200 status 299)
+            (let [parsed (json/read-value (:body response) object-mapper)]
+              (anthropic-response->message parsed))
+            {::anom/category (status->anomaly-category status)
+             ::anom/message  (str "Anthropic API error (HTTP " status ")")
+             :http/status    status
+             :http/body      (:body response)}))
+        (catch Exception e
+          {::anom/category ::anom/fault
+           ::anom/message  (ex-message e)}))))
+
+  (stream [_this messages opts]
+    (if-let [validation-error (validate-inputs messages opts)]
+      (let [err-ch (async/chan 1)]
+        (async/put! err-ch {:type :error :error validation-error})
+        (async/close! err-ch)
+        err-ch)
+      (try
+        (let [body       (assoc (build-request-body model-id messages opts)
+                                :stream true)
+              json-body  (json/write-value-as-string body)
+              response   (hc/post api-url
+                                  {:headers      (request-headers api-key)
+                                   :body         json-body
+                                   :http-client  http-client
+                                   :as           :stream
+                                   :throw-exceptions? false})
+              status     (:status response)]
+          (if (<= 200 status 299)
+            (let [reader  (BufferedReader. (InputStreamReader. (:body response) "UTF-8"))
+                  sse-ch  (streaming/sse-events->channel! reader)
+                  out-ch  (async/chan (async/buffer 64))]
+              (process-stream-events! sse-ch out-ch)
+              out-ch)
+            (let [err-ch (async/chan 1)
+                  body-str (slurp (:body response))]
+              (async/put! err-ch {:type  :error
+                                  :error {::anom/category (status->anomaly-category status)
+                                          ::anom/message  (str "Anthropic API error (HTTP " status ")")
+                                          :http/status    status
+                                          :http/body      body-str}})
+              (async/close! err-ch)
+              err-ch)))
+        (catch Exception e
+          (let [err-ch (async/chan 1)]
             (async/put! err-ch {:type  :error
-                                :error {::anom/category (status->anomaly-category status)
-                                        ::anom/message  (str "Anthropic API error (HTTP " status ")")
-                                        :http/status    status
-                                        :http/body      body-str}})
+                                :error {::anom/category ::anom/fault
+                                        ::anom/message  (ex-message e)}})
             (async/close! err-ch)
-            err-ch)))
-      (catch Exception e
-        (let [err-ch (async/chan 1)]
-          (async/put! err-ch {:type  :error
-                              :error {::anom/category ::anom/fault
-                                      ::anom/message  (ex-message e)}})
-          (async/close! err-ch)
-          err-ch))))
+            err-ch)))))
 
   (list-models [_this]
     (registry/models-for-provider :anthropic)))

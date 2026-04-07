@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async :as async]
    [clojure.test :refer [deftest is testing]]
+   [cognitect.anomalies :as anom]
    [matcher-combinators.test :refer [match?]]
    [opencode.adapter.llm.anthropic :as anthropic]
    [opencode.domain.message :as message]))
@@ -70,6 +71,29 @@
                                :content [{:type        "tool_result"
                                           :tool_use_id "tc_1"
                                           :content     "file1.txt\nfile2.txt"}]}]}
+                  result))))
+
+  (testing "merges consecutive tool results into single user message"
+    (let [msgs   [(message/user-message "Do two things")
+                  (message/assistant-message
+                    nil
+                    [{:tool-call/id "tc_1"
+                      :tool-call/name "bash"
+                      :tool-call/arguments {:command "ls"}}
+                     {:tool-call/id "tc_2"
+                      :tool-call/name "bash"
+                      :tool-call/arguments {:command "pwd"}}]
+                    :tool-calls)
+                  (message/tool-result "tc_1" "a.txt")
+                  (message/tool-result "tc_2" "/home")]
+          result (anthropic/messages->anthropic msgs)]
+      ;; Two consecutive tool results should be merged into one "user" message
+      (is (= 3 (count (:messages result))))
+      (is (match? {:messages [{:role "user" :content "Do two things"}
+                              {:role "assistant"}
+                              {:role    "user"
+                               :content [{:type "tool_result" :tool_use_id "tc_1" :content "a.txt"}
+                                         {:type "tool_result" :tool_use_id "tc_2" :content "/home"}]}]}
                   result))))
 
   (testing "handles full conversation with all message types"
@@ -267,6 +291,37 @@
                      :error {:cognitect.anomalies/category :cognitect.anomalies/fault
                              :cognitect.anomalies/message  "Overloaded"}}
                     e1))))))
+
+;; ---------------------------------------------------------------------------
+;; Input validation tests
+;; ---------------------------------------------------------------------------
+
+(deftest validate-inputs-test
+  (testing "complete returns anomaly for invalid messages"
+    (let [result (#'anthropic/validate-inputs ["not a message"] {})]
+      (is (match? {::anom/category ::anom/incorrect
+                   ::anom/message  "Invalid messages"}
+                  result))))
+
+  (testing "complete returns anomaly for invalid opts"
+    (let [result (#'anthropic/validate-inputs
+                  [(message/user-message "hi")]
+                  {:max-tokens "not-an-int"})]
+      (is (match? {::anom/category ::anom/incorrect
+                   ::anom/message  "Invalid completion options"}
+                  result))))
+
+  (testing "returns nil for valid inputs"
+    (let [result (#'anthropic/validate-inputs
+                  [(message/user-message "hi")]
+                  {:max-tokens 100})]
+      (is (nil? result))))
+
+  (testing "returns nil for nil opts"
+    (let [result (#'anthropic/validate-inputs
+                  [(message/user-message "hi")]
+                  nil)]
+      (is (nil? result)))))
 
 (comment
   ;; Manual REPL test (requires ANTHROPIC_API_KEY env var)
