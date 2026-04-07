@@ -70,8 +70,8 @@ clj-kondo --lint src test
 - Added `opencode.adapter.llm.anthropic` — Full `LLMProvider` implementation for the Anthropic Messages API:
   - `messages->anthropic` / `anthropic-response->message` for bidirectional message format conversion
   - `complete` — synchronous POST to `/v1/messages`, parses JSON response to domain assistant message
-  - `stream` — streaming POST with `{:stream true}`, SSE events parsed via `sse-events->channel!` and transformed into domain stream events (`:text-delta`, `:tool-call`, `:done`, `:error`)
-  - Tool call accumulation across `content_block_start` / `input_json_delta` / `content_block_stop` events
+  - `stream` — streaming POST with `{:stream true}`, SSE events parsed via `sse-events->channel!` and transformed into domain stream events (`:text-delta`, `:done`, `:error`)
+  - Tool call data is accumulated across `content_block_start` / `input_json_delta` / `content_block_stop` events and included in the final `:done` message
   - HTTP error mapping to cognitect anomaly categories (401→forbidden, 429→busy, 500+→fault)
   - Integrant component `:opencode/llm-provider` wired with dependency on `:opencode/config`
 - Updated `opencode.system` — Added `:opencode/llm-provider {:config (ig/ref :opencode/config)}` to system config

@@ -101,8 +101,8 @@
                          ::anom/message  (ex-message e)}]
             (async/>!! ch anomaly)))
         (finally
-          (.close reader)
-          (async/close! ch))))
+          (async/close! ch)
+          (try (.close reader) (catch Exception _)))))
     ch)))
 
 (comment
