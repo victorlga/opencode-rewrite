@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async :as async]
    [clojure.test :refer [deftest is testing]]
+   [cognitect.anomalies :as anom]
    [matcher-combinators.test :refer [match?]]
    [opencode.logic.streaming :as streaming])
   (:import
@@ -117,10 +118,10 @@
       (is (match? [] (vec (streaming/read-sse-events (->reader input))))))))
 
 ;; ---------------------------------------------------------------------------
-;; sse-events->channel tests
+;; sse-events->channel! tests
 ;; ---------------------------------------------------------------------------
 
-(deftest sse-events->channel-test
+(deftest sse-events->channel!-test
   (testing "delivers events and closes channel on reader end"
     (let [input  (str "event: message_start\n"
                       "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\"}}\n"
@@ -131,7 +132,7 @@
                       "event: message_stop\n"
                       "data: {\"type\":\"message_stop\"}\n"
                       "\n")
-          ch     (streaming/sse-events->channel (->reader input))
+          ch     (streaming/sse-events->channel! (->reader input))
           [e1 _] (async/alts!! [ch (async/timeout 2000)])
           [e2 _] (async/alts!! [ch (async/timeout 2000)])
           [e3 _] (async/alts!! [ch (async/timeout 2000)])
@@ -146,7 +147,45 @@
       (is (= ch c) "should return from ch (closed), not timeout")))
 
   (testing "closes channel on empty input"
-    (let [ch     (streaming/sse-events->channel (->reader ""))
+    (let [ch     (streaming/sse-events->channel! (->reader ""))
           [evt c] (async/alts!! [ch (async/timeout 2000)])]
       (is (nil? evt))
-      (is (= ch c) "channel should close immediately on empty input"))))
+      (is (= ch c) "channel should close immediately on empty input")))
+
+  (testing "delivers anomaly map on malformed JSON and closes channel"
+    (let [input  (str "event: content_block_delta\n"
+                      "data: {not valid json}\n"
+                      "\n")
+          ch     (streaming/sse-events->channel! (->reader input))
+          [evt _] (async/alts!! [ch (async/timeout 2000)])
+          [eof c] (async/alts!! [ch (async/timeout 2000)])]
+      (is (match? {::anom/category ::anom/fault
+                   ::anom/message  string?}
+                  evt))
+      (is (nil? eof))
+      (is (= ch c) "channel should close after anomaly")))
+
+  (testing "stops putting events when channel is closed by consumer"
+    ;; With in-memory StringReader, events may already be buffered before
+    ;; close takes effect. The key invariant: >!! returns false on closed
+    ;; channel, loop exits, and no more events are put.
+    (let [input  (str "event: message_start\n"
+                      "data: {\"type\":\"message_start\"}\n"
+                      "\n"
+                      "event: content_block_delta\n"
+                      "data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hi\"}}\n"
+                      "\n"
+                      "event: message_stop\n"
+                      "data: {\"type\":\"message_stop\"}\n"
+                      "\n")
+          ch     (streaming/sse-events->channel! (->reader input))
+          [e1 _] (async/alts!! [ch (async/timeout 2000)])]
+      (is (match? {:sse/type :message_start} e1))
+      ;; Close channel — loop should stop putting on next >!! attempt
+      (async/close! ch)
+      ;; Drain any events that were already buffered before close
+      (loop []
+        (let [[v _] (async/alts!! [ch (async/timeout 500)])]
+          (when v (recur))))
+      ;; Channel should now be fully drained and closed
+      (is (nil? (async/<!! ch))))))

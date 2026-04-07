@@ -7,6 +7,7 @@
   (:require
    [clojure.core.async :as async]
    [clojure.string :as str]
+   [cognitect.anomalies :as anom]
    [jsonista.core :as json]))
 
 ;; ---------------------------------------------------------------------------
@@ -72,22 +73,33 @@
 ;; Channel-based SSE reader
 ;; ---------------------------------------------------------------------------
 
-(defn sse-events->channel
+(defn sse-events->channel!
   "Wraps read-sse-events in an async/thread, puts each parsed event onto a
    core.async channel, and closes the channel when the reader ends.
    Returns the channel immediately.
+
+   Uses loop/recur to check >!! return — stops reading when the channel is
+   closed (e.g., consumer cancellation), avoiding resource leaks on network
+   streams. Catches exceptions and delivers an anomaly map on the channel
+   before closing, so consumers can distinguish errors from normal completion.
 
    buf-size controls the bounded buffer size for the output channel (default 64).
    Uses a bounded buffer (not sliding) to apply backpressure rather than
    silently dropping LLM response events per AGENTS.md buffer conventions."
   ([reader]
-   (sse-events->channel reader 64))
+   (sse-events->channel! reader 64))
   ([reader buf-size]
    (let [ch (async/chan (async/buffer buf-size))]
      (async/thread
        (try
-         (doseq [evt (read-sse-events reader)]
-           (async/>!! ch evt))
+         (loop [events (seq (read-sse-events reader))]
+           (when events
+             (when (async/>!! ch (first events))
+               (recur (next events)))))
+         (catch Exception e
+           (let [anomaly {::anom/category ::anom/fault
+                          ::anom/message  (ex-message e)}]
+             (async/>!! ch anomaly)))
          (finally
            (async/close! ch))))
      ch)))
