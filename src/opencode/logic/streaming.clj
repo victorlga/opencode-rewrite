@@ -77,11 +77,13 @@
    core.async channel, and closes the channel when the reader ends.
    Returns the channel immediately.
 
-   buf-size controls the sliding-buffer size for the output channel (default 64)."
+   buf-size controls the bounded buffer size for the output channel (default 64).
+   Uses a bounded buffer (not sliding) to apply backpressure rather than
+   silently dropping LLM response events per AGENTS.md buffer conventions."
   ([reader]
    (sse-events->channel reader 64))
   ([reader buf-size]
-   (let [ch (async/chan (async/sliding-buffer buf-size))]
+   (let [ch (async/chan (async/buffer buf-size))]
      (async/thread
        (try
          (doseq [evt (read-sse-events reader)]
