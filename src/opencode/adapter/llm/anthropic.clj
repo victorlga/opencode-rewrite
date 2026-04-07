@@ -278,6 +278,7 @@
                            :error {::anom/category ::anom/fault
                                    ::anom/message  (ex-message e)}}))
       (finally
+        (async/close! sse-ch)
         (async/close! out-ch)))))
 
 ;; ---------------------------------------------------------------------------
