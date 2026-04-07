@@ -9,7 +9,7 @@
 (deftest publish-subscribe-test
   (testing "subscriber receives matching events"
     (let [b      (bus/create-bus)
-          sub-ch (bus/subscribe b :session/updated 16)]
+          sub-ch (bus/subscribe! b :session/updated 16)]
       (try
         (bus/publish! b :session/updated {:session/id "abc"})
         (let [[event _] (async/alts!! [sub-ch (async/timeout 1000)])]
@@ -23,7 +23,7 @@
 (deftest subscriber-filtering-test
   (testing "subscriber does not receive non-matching events"
     (let [b      (bus/create-bus)
-          sub-ch (bus/subscribe b :llm/stream-done 16)]
+          sub-ch (bus/subscribe! b :llm/stream-done 16)]
       (try
         (bus/publish! b :session/updated {:session/id "abc"})
         ;; Give the event time to propagate (it shouldn't arrive)
@@ -36,7 +36,7 @@
 (deftest close-bus-test
   (testing "close-bus! causes subscriber channel to close"
     (let [b      (bus/create-bus)
-          sub-ch (bus/subscribe b :tool/executing 16)]
+          sub-ch (bus/subscribe! b :tool/executing 16)]
       (bus/close-bus! b)
       ;; A closed channel returns nil
       (let [[event _] (async/alts!! [sub-ch (async/timeout 1000)])]
@@ -45,9 +45,9 @@
 (deftest unsubscribe-test
   (testing "unsubscribed channel no longer receives events"
     (let [b      (bus/create-bus)
-          sub-ch (bus/subscribe b :llm/error 16)]
+          sub-ch (bus/subscribe! b :llm/error 16)]
       (try
-        (bus/unsubscribe b :llm/error sub-ch)
+        (bus/unsubscribe! b :llm/error sub-ch)
         (bus/publish! b :llm/error {:message "timeout"})
         (let [[event ch] (async/alts!! [sub-ch (async/timeout 200)])]
           (is (nil? event) "should not receive event after unsubscribe")
@@ -66,8 +66,8 @@
 (deftest multiple-subscribers-test
   (testing "multiple subscribers on same event type each receive the event"
     (let [b    (bus/create-bus)
-          sub1 (bus/subscribe b :tool/completed 16)
-          sub2 (bus/subscribe b :tool/completed 16)]
+          sub1 (bus/subscribe! b :tool/completed 16)
+          sub2 (bus/subscribe! b :tool/completed 16)]
       (try
         (bus/publish! b :tool/completed {:tool "bash" :result "ok"})
         (let [[e1 _] (async/alts!! [sub1 (async/timeout 1000)])

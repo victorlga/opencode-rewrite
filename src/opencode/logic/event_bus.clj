@@ -47,7 +47,7 @@
                :event/data      data
                :event/timestamp (Instant/now)}))
 
-(defn subscribe
+(defn subscribe!
   "Creates a subscriber channel that receives events of the given type.
    buffer-size controls the sliding-buffer size for the subscriber channel.
    Returns the subscriber channel."
@@ -56,7 +56,7 @@
     (async/sub (:bus/publication bus) event-type ch)
     ch))
 
-(defn unsubscribe
+(defn unsubscribe!
   "Removes a subscriber channel from the publication for the given event type."
   [bus event-type ch]
   (async/unsub (:bus/publication bus) event-type ch))
@@ -74,12 +74,12 @@
 (comment
   ;; REPL exploration
   (def bus (create-bus))
-  (def sub-ch (subscribe bus :session/updated 16))
+  (def sub-ch (subscribe! bus :session/updated 16))
 
   (publish! bus :session/updated {:session/id "abc"})
 
   (async/<!! sub-ch) ;; => event map
 
-  (unsubscribe bus :session/updated sub-ch)
+  (unsubscribe! bus :session/updated sub-ch)
   (close-bus! bus)
   ,)
