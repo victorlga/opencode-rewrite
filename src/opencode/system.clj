@@ -4,7 +4,8 @@
    Will be extended in future sessions with event-bus, LLM providers, etc."
   (:require
    [integrant.core :as ig]
-   [opencode.config]))
+   [opencode.config]
+   [opencode.logic.event-bus]))
 
 ;; ---------------------------------------------------------------------------
 ;; System configuration
@@ -13,7 +14,8 @@
 (def default-system-config
   "Default Integrant system configuration map.
    Each key corresponds to a component initialized via ig/init-key."
-  {:opencode/config {}})
+  {:opencode/config {}
+   :opencode/event-bus {}})
 
 (defn system-config
   "Returns the system configuration, optionally merging overrides."
