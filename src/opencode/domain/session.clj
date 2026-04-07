@@ -2,6 +2,7 @@
   "Pure functions for session data manipulation.
    Sessions are plain maps with namespaced keywords — no side effects, no I/O."
   (:require
+   [cognitect.anomalies :as anom]
    [malli.core :as m]
    [malli.error :as me]
    [opencode.domain.message :as message])
@@ -31,7 +32,8 @@
 
 (defn create-session
   "Creates a new session with a random UUID, empty messages, zero tokens,
-   title \"New Session\", and created-at set to now."
+   title \"New Session\", and created-at set to now.
+   Returns the session map, or an anomaly map if validation fails."
   [model]
   (let [session {:session/id         (UUID/randomUUID)
                  :session/title      "New Session"
@@ -39,11 +41,11 @@
                  :session/created-at (Instant/now)
                  :session/model      model
                  :session/tokens     {:input 0 :output 0}}]
-    (when-not (m/validate Session session)
-      (throw (ex-info "Invalid session data"
-                      {:errors (me/humanize (m/explain Session session))
-                       :data   session})))
-    session))
+    (if (m/validate Session session)
+      session
+      {::anom/category ::anom/incorrect
+       ::anom/message  "Invalid session data"
+       :errors         (me/humanize (m/explain Session session))})))
 
 ;; ---------------------------------------------------------------------------
 ;; Pure accessors and transforms

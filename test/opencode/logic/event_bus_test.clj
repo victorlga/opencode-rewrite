@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async :as async]
    [clojure.test :refer [deftest is testing]]
+   [matcher-combinators.test :refer [match?]]
    [opencode.logic.event-bus :as bus])
   (:import
    (java.time Instant)))
@@ -14,8 +15,9 @@
         (bus/publish! b :session/updated {:session/id "abc"})
         (let [[event _] (async/alts!! [sub-ch (async/timeout 1000)])]
           (is (some? event))
-          (is (= :session/updated (:event/type event)))
-          (is (= {:session/id "abc"} (:event/data event)))
+          (is (match? {:event/type :session/updated
+                       :event/data {:session/id "abc"}}
+                      event))
           (is (instance? Instant (:event/timestamp event))))
         (finally
           (bus/close-bus! b))))))
@@ -72,9 +74,7 @@
         (bus/publish! b :tool/completed {:tool "bash" :result "ok"})
         (let [[e1 _] (async/alts!! [sub1 (async/timeout 1000)])
               [e2 _] (async/alts!! [sub2 (async/timeout 1000)])]
-          (is (some? e1))
-          (is (some? e2))
-          (is (= :tool/completed (:event/type e1)))
-          (is (= :tool/completed (:event/type e2))))
+          (is (match? {:event/type :tool/completed} e1))
+          (is (match? {:event/type :tool/completed} e2)))
         (finally
           (bus/close-bus! b))))))

@@ -1,8 +1,10 @@
 (ns opencode.domain.message
   "Message schemas and constructor functions for the opencode domain.
    Translates the TypeScript MessageV2 discriminated unions into Malli schemas
-   with namespaced keywords. Constructors validate output via Malli."
+   with namespaced keywords. Constructors validate output via Malli and return
+   anomaly maps on invalid data (per AGENTS.md error handling conventions)."
   (:require
+   [cognitect.anomalies :as anom]
    [malli.core :as m]
    [malli.error :as me]))
 
@@ -56,47 +58,56 @@
 ;; Validation helper
 ;; ---------------------------------------------------------------------------
 
-(defn- validate!
-  "Validates data against schema. Returns data if valid, throws ex-info if not."
+(defn- validate
+  "Validates data against schema. Returns data if valid, anomaly map if not."
   [schema data]
   (if (m/validate schema data)
     data
-    (throw (ex-info "Invalid message data"
-                    {:errors (me/humanize (m/explain schema data))
-                     :data   data}))))
+    {::anom/category ::anom/incorrect
+     ::anom/message  "Invalid message data"
+     :errors         (me/humanize (m/explain schema data))}))
+
+(defn anomaly?
+  "Returns true if the given value is a cognitect anomaly map."
+  [x]
+  (and (map? x) (contains? x ::anom/category)))
 
 ;; ---------------------------------------------------------------------------
 ;; Constructor functions
 ;; ---------------------------------------------------------------------------
 
 (defn system-message
-  "Creates a validated system message."
+  "Creates a validated system message.
+   Returns the message map, or an anomaly map if validation fails."
   [content]
-  (validate! SystemMessage
+  (validate SystemMessage
              {:message/role    :system
               :message/content content}))
 
 (defn user-message
-  "Creates a validated user message."
+  "Creates a validated user message.
+   Returns the message map, or an anomaly map if validation fails."
   [content]
-  (validate! UserMessage
+  (validate UserMessage
              {:message/role    :user
               :message/content content}))
 
 (defn assistant-message
   "Creates a validated assistant message.
-   tool-calls may be nil or a vector of ToolCall maps."
+   tool-calls may be nil or a vector of ToolCall maps.
+   Returns the message map, or an anomaly map if validation fails."
   [content tool-calls finish-reason]
-  (validate! AssistantMessage
+  (validate AssistantMessage
              (cond-> {:message/role          :assistant
                       :message/content       content
                       :message/finish-reason finish-reason}
                (seq tool-calls) (assoc :message/tool-calls (vec tool-calls)))))
 
 (defn tool-result
-  "Creates a validated tool result message."
+  "Creates a validated tool result message.
+   Returns the message map, or an anomaly map if validation fails."
   [call-id content]
-  (validate! ToolResultMessage
+  (validate ToolResultMessage
              {:message/role        :tool
               :message/tool-call-id call-id
               :message/content     content}))
@@ -112,4 +123,8 @@
                        :tool-call/arguments {:command "ls"}}]
                      :tool-calls)
   (tool-result "tc_1" "file1.txt\nfile2.txt")
+
+  ;; Returns anomaly map instead of throwing
+  (user-message 42)
+  (anomaly? (user-message 42))
   ,)
