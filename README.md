@@ -12,6 +12,7 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
 - **Session 3** — LLM provider abstraction: Protocol definition, model metadata registry, SSE stream parsing utilities
 - **Session 4** — Anthropic provider: Full LLMProvider implementation with HTTP calls via hato, message format conversion, streaming via SSE/core.async, Integrant wiring
 - **Session 5** — Tool system: Tool framework with registry, multimethod dispatch, JSON Schema conversion via Malli. Three tool implementations: `read_file`, `write_file`, `glob`
+- **Session 6** — Complete tool suite: `edit_file` (search/replace with exact + whitespace-normalized matching), `bash` (shell execution with timeout + truncation), `grep` (ripgrep/grep with output parsing + truncation)
 
 ## How It Works
 
@@ -37,14 +38,17 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
    domain/tool.clj                             adapter/tool/
    (registry, schemas,                         ├── file_read.clj (read_file)
     multimethod dispatch,                      ├── file_write.clj (write_file)
-    JSON Schema convert)                       └── glob.clj (glob)
+    JSON Schema convert)                       ├── glob.clj (glob)
+                                               ├── file_edit.clj (edit_file)
+                                               ├── bash.clj (bash)
+                                               └── grep.clj (grep)
 
                          logic/streaming.clj
                          (SSE parsing → core.async channels)
 ```
 
 - **Domain layer** (`opencode.domain.*`) — Pure functions and Malli schemas. No I/O, no side effects. Messages are plain maps with namespaced keywords (`:message/role`, `:session/id`). Constructors validate via Malli and return anomaly maps on invalid data.
-- **Adapter layer** (`opencode.adapter.*`) — Side-effecting code at the edges. The `LLMProvider` protocol defines the interface for LLM completions and streaming. The Anthropic adapter implements the protocol with real HTTP calls via hato and SSE stream parsing via core.async. The model registry stores static model metadata (context windows, costs, capabilities). Tool adapters (`adapter/tool/`) implement `execute-tool!` multimethods for file I/O and glob operations.
+- **Adapter layer** (`opencode.adapter.*`) — Side-effecting code at the edges. The `LLMProvider` protocol defines the interface for LLM completions and streaming. The Anthropic adapter implements the protocol with real HTTP calls via hato and SSE stream parsing via core.async. The model registry stores static model metadata (context windows, costs, capabilities). Tool adapters (`adapter/tool/`) implement `execute-tool!` multimethods for file I/O, glob, edit, bash, and grep operations.
 - **Logic layer** (`opencode.logic.*`) — Orchestration with managed side effects. The event bus uses core.async channels with sliding buffers for pub/sub. SSE streaming utilities parse Anthropic server-sent events into channel-based event streams.
 - **Config** — EDN files read by Aero with `#env` tag literals. Malli validates at startup; invalid config returns cognitect anomaly maps.
 
@@ -71,23 +75,22 @@ clj -M:test
 clj-kondo --lint src test
 ```
 
-## Recent Changes (Session 5)
+## Recent Changes (Session 6)
 
-- Added `opencode.domain.tool` — Tool framework:
-  - `ToolDef` / `ToolContext` Malli schemas for tool definitions and execution context
-  - Atom-backed registry with `register-tool!`, `get-tool`, `all-tools`, `reset-registry!`
-  - `tools-for-api` converts Malli parameter schemas to JSON Schema via `malli.json-schema/transform` for the Anthropic tool API
-  - `execute-tool!` multimethod dispatching on tool name string; `:default` returns `::anom/unsupported`
-- Added `opencode.adapter.tool.file-read` — `read_file` tool:
-  - Reads file content with optional line `:offset` and `:limit`
-  - Binary detection via null-byte scan of first 8KB
-  - Truncation at 50KB with guidance message
-  - Path resolution relative to project dir from context
-- Added `opencode.adapter.tool.file-write` — `write_file` tool:
-  - Creates or overwrites files, auto-creates parent directories via `babashka.fs/create-dirs`
-  - Gated behind `dangerous-mode?` context flag (returns `::anom/forbidden` when disabled)
-- Added `opencode.adapter.tool.glob` — `glob` tool:
-  - Finds files matching glob patterns via `babashka.fs/glob`
-  - Returns paths relative to search dir, sorted alphabetically
-  - Truncates at 200 results with count message
-- 61 tests, 175 assertions, 0 failures. clj-kondo: 0 errors, 0 warnings.
+- Added `opencode.adapter.tool.file-edit` — `edit_file` tool:
+  - Exact string match first, then whitespace-normalized match (trim each line), context snippet on failure
+  - Replaces first occurrence only; reports when multiple matches exist
+  - Gated behind `dangerous-mode?` context flag
+  - Returns anomaly with nearest 5 lines when old_string not found
+- Added `opencode.adapter.tool.bash` — `bash` tool:
+  - Shell execution via `babashka.process` with configurable timeout (default 2 min)
+  - Combined stdout+stderr, truncated at 50KB (UTF-8 safe boundary)
+  - Non-zero exit is NOT an anomaly (returns as `:exit-code` in output)
+  - Timeout returns `:busy` anomaly
+- Added `opencode.adapter.tool.grep` — `grep` tool:
+  - Prefers ripgrep (`rg`), falls back to `grep` if unavailable
+  - Parses output to `file:line: content` format
+  - Truncates at 100 matches with guidance message
+  - Supports `--include`/`--glob` filtering
+- Full tool suite now complete: `read_file`, `write_file`, `glob`, `edit_file`, `bash`, `grep`
+- 82 tests, 205 assertions, 0 failures. clj-kondo: 0 errors, 0 warnings.
