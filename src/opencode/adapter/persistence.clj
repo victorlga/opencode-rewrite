@@ -50,10 +50,10 @@
        vec))
 
 (defn delete-session!
-  "Removes a session from the store by ID. Returns nil."
+  "Removes a session from the store by ID. Returns the session-id that was deleted."
   [store session-id]
   (swap! (:sessions-atom store) dissoc session-id)
-  nil)
+  session-id)
 
 ;; ---------------------------------------------------------------------------
 ;; Integrant component

@@ -34,13 +34,14 @@
         (is (= (:session/id s1) (:session/id (second result))))))))
 
 (deftest delete-session-test
-  (testing "delete-session! removes the session from the store"
+  (testing "delete-session! removes the session and returns the session-id"
     (let [store (persistence/create-store)
-          s     (session/create-session "claude-sonnet-4-20250514")]
+          s     (session/create-session "claude-sonnet-4-20250514")
+          sid   (:session/id s)]
       (persistence/save-session! store s)
-      (is (some? (persistence/load-session store (:session/id s))))
-      (persistence/delete-session! store (:session/id s))
-      (is (nil? (persistence/load-session store (:session/id s)))))))
+      (is (some? (persistence/load-session store sid)))
+      (is (= sid (persistence/delete-session! store sid)))
+      (is (nil? (persistence/load-session store sid))))))
 
 (deftest save-returns-session-test
   (testing "save-session! returns the session that was saved"

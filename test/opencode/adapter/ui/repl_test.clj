@@ -17,10 +17,11 @@
 (deftest repl-ui-satisfies-protocol-test
   (testing "ReplUI record satisfies UIAdapter protocol"
     ;; Use nil line-reader — we won't call interactive methods
-    (let [ui (repl/->ReplUI nil)]
+    (let [ui (repl/->ReplUI nil nil)]
       (is (true? (satisfies? ui/UIAdapter ui))))))
 
 (deftest repl-ui-record-fields-test
   (testing "ReplUI has a :line-reader field"
-    (let [ui (repl/->ReplUI :fake-reader)]
-      (is (= :fake-reader (:line-reader ui))))))
+    (let [ui (repl/->ReplUI :fake-reader :fake-terminal)]
+      (is (= :fake-reader (:line-reader ui)))
+      (is (= :fake-terminal (:terminal ui))))))

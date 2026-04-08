@@ -7,7 +7,7 @@
    [integrant.core :as ig]
    [opencode.logic.ui :as ui])
   (:import
-   (org.jline.reader LineReaderBuilder)
+   (org.jline.reader EndOfFileException LineReaderBuilder UserInterruptException)
    (org.jline.terminal TerminalBuilder)))
 
 ;; ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@
 ;; ReplUI record
 ;; ---------------------------------------------------------------------------
 
-(defrecord ReplUI [line-reader]
+(defrecord ReplUI [line-reader terminal]
   ui/UIAdapter
 
   (display-text! [_this text]
@@ -54,14 +54,20 @@
     (println (ansi ansi-yellow
                    (str "Tool \"" tool-name "\" wants to run with: "
                         (pr-str params))))
-    (let [answer (.readLine line-reader
-                            (ansi ansi-yellow "Allow? [y/n] "))]
-      (if (= (str/lower-case (str/trim answer)) "y")
+    (let [answer (try
+                   (.readLine line-reader
+                              (ansi ansi-yellow "Allow? [y/n] "))
+                   (catch EndOfFileException _ nil)
+                   (catch UserInterruptException _ nil))]
+      (if (and answer (= (str/lower-case (str/trim answer)) "y"))
         :approved
         :denied)))
 
   (get-input! [_this prompt]
-    (.readLine line-reader prompt)))
+    (try
+      (.readLine line-reader prompt)
+      (catch EndOfFileException _ nil)
+      (catch UserInterruptException _ nil))))
 
 ;; ---------------------------------------------------------------------------
 ;; Constructor
@@ -77,7 +83,7 @@
         reader   (-> (LineReaderBuilder/builder)
                      (.terminal terminal)
                      (.build))]
-    (->ReplUI reader)))
+    (->ReplUI reader terminal)))
 
 ;; ---------------------------------------------------------------------------
 ;; Integrant component
@@ -85,6 +91,10 @@
 
 (defmethod ig/init-key :opencode/ui [_ _opts]
   (create-repl-ui))
+
+(defmethod ig/halt-key! :opencode/ui [_ ui]
+  (when-let [term (:terminal ui)]
+    (.close term)))
 
 (comment
   ;; REPL exploration (requires a real terminal)
