@@ -89,3 +89,32 @@
     (is (match? {::anom/category ::anom/unsupported
                  ::anom/message  "Unknown tool: nonexistent"}
                 (tool/execute-tool! "nonexistent" {} {})))))
+
+;; ---------------------------------------------------------------------------
+;; invoke-tool! validation tests
+;; ---------------------------------------------------------------------------
+
+(def valid-context
+  {:ctx/session-id      (java.util.UUID/randomUUID)
+   :ctx/project-dir     "/tmp"
+   :ctx/dangerous-mode? false})
+
+(deftest invoke-tool-validates-context-test
+  (testing "invoke-tool! returns anomaly for invalid context"
+    (tool/register-tool! sample-tool)
+    (is (match? {::anom/category ::anom/incorrect
+                 ::anom/message  "Invalid tool context"}
+                (tool/invoke-tool! "test_tool" {:input "hello"} {:bad "context"})))))
+
+(deftest invoke-tool-validates-params-test
+  (testing "invoke-tool! returns anomaly for invalid params"
+    (tool/register-tool! sample-tool)
+    (is (match? {::anom/category ::anom/incorrect
+                 ::anom/message  "Invalid params for tool: test_tool"}
+                (tool/invoke-tool! "test_tool" {:wrong-key 42} valid-context)))))
+
+(deftest invoke-tool-unknown-tool-test
+  (testing "invoke-tool! delegates to :default for unknown tools"
+    (is (match? {::anom/category ::anom/unsupported
+                 ::anom/message  "Unknown tool: nonexistent"}
+                (tool/invoke-tool! "nonexistent" {} valid-context)))))

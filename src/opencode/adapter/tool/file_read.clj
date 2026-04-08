@@ -85,7 +85,18 @@
             output    (str/join "\n" selected)
             truncated? (> (count (.getBytes output "UTF-8")) max-bytes)]
         (if truncated?
-          (let [truncated-output (String. (.getBytes output "UTF-8") 0 max-bytes "UTF-8")]
+          (let [byte-arr (.getBytes output "UTF-8")
+                ;; Walk backwards from max-bytes to find a valid UTF-8 boundary.
+                ;; A continuation byte has the form 10xxxxxx (top 2 bits = 0x80).
+                ;; Stop at the first byte that is NOT a continuation byte.
+                safe-end (loop [i max-bytes]
+                           (if (<= i 0)
+                             0
+                             (let [b (bit-and (aget byte-arr i) 0xFF)]
+                               (if (not= (bit-and b 0xC0) 0x80)
+                                 i
+                                 (recur (dec i))))))
+                truncated-output (String. byte-arr 0 safe-end "UTF-8")]
             {:output (str truncated-output
                           "\n[Content truncated. Use grep to search or read_file with offset/limit.]")})
           {:output output})))))

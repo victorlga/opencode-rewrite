@@ -85,13 +85,42 @@
 (defmulti execute-tool!
   "Executes a tool by name with the given params and context.
    Dispatches on tool-name (a string).
-   Returns a map with :output on success, or an anomaly map on failure."
+   Returns a map with :output on success, or an anomaly map on failure.
+   Prefer invoke-tool! which adds Malli validation at the adapter boundary."
   (fn [tool-name _params _context] tool-name))
 
 (defmethod execute-tool! :default
   [tool-name _params _context]
   {::anom/category ::anom/unsupported
    ::anom/message  (str "Unknown tool: " tool-name)})
+
+(defn invoke-tool!
+  "Validates params and context with Malli, then delegates to execute-tool!.
+   This is the public entry point — enforces AGENTS.md rule:
+   'NEVER skip Malli validation at adapter boundaries.'
+   Returns anomaly map if validation fails, otherwise the tool's result."
+  [tool-name params context]
+  (let [tool-def (get-tool tool-name)]
+    (cond
+      ;; Unknown tool — delegate to :default multimethod
+      (nil? tool-def)
+      (execute-tool! tool-name params context)
+
+      ;; Validate context
+      (not (m/validate ToolContext context))
+      {::anom/category ::anom/incorrect
+       ::anom/message  "Invalid tool context"
+       :errors         (me/humanize (m/explain ToolContext context))}
+
+      ;; Validate params against tool's parameter schema
+      (not (m/validate (:tool/parameters tool-def) params))
+      {::anom/category ::anom/incorrect
+       ::anom/message  (str "Invalid params for tool: " tool-name)
+       :errors         (me/humanize (m/explain (:tool/parameters tool-def) params))}
+
+      ;; All valid — execute
+      :else
+      (execute-tool! tool-name params context))))
 
 (comment
   ;; REPL exploration

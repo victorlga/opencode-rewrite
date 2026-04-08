@@ -39,7 +39,7 @@
           (when (and parent (not (fs/exists? parent)))
             (fs/create-dirs parent)))
         (spit abs-path content)
-        {:output (str "Wrote " (count content) " bytes to " abs-path)}
+        {:output (str "Wrote " (count (.getBytes ^String content "UTF-8")) " bytes to " abs-path)}
         (catch Exception e
           {::anom/category ::anom/fault
            ::anom/message  (ex-message e)})))))
