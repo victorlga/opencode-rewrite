@@ -4,7 +4,11 @@
    to DataScript or SQLite later — session shapes are plain serializable EDN.
    Wired as Integrant component :opencode/session-store."
   (:require
-   [integrant.core :as ig]))
+   [cognitect.anomalies :as anom]
+   [integrant.core :as ig]
+   [malli.core :as m]
+   [malli.error :as me]
+   [opencode.domain.session :as session]))
 
 ;; ---------------------------------------------------------------------------
 ;; SessionStore record
@@ -22,11 +26,16 @@
 ;; ---------------------------------------------------------------------------
 
 (defn save-session!
-  "Persists a session in the store, keyed by :session/id.
-   Returns the session."
+  "Validates session against the Session schema, then persists it in the store.
+   Returns the session on success, or an anomaly map if validation fails."
   [store session]
-  (swap! (:sessions-atom store) assoc (:session/id session) session)
-  session)
+  (if (m/validate session/Session session)
+    (do
+      (swap! (:sessions-atom store) assoc (:session/id session) session)
+      session)
+    {::anom/category ::anom/incorrect
+     ::anom/message  "Invalid session data"
+     :errors         (me/humanize (m/explain session/Session session))}))
 
 (defn load-session
   "Loads a session by ID. Returns the session map, or nil if not found."
@@ -55,7 +64,6 @@
 
 (comment
   ;; REPL exploration
-  (require '[opencode.domain.session :as session])
   (def store (create-store))
   (def s (session/create-session "claude-sonnet-4-20250514"))
   (save-session! store s)

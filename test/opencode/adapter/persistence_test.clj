@@ -1,6 +1,7 @@
 (ns opencode.adapter.persistence-test
   (:require
    [clojure.test :refer [deftest is testing]]
+   [cognitect.anomalies :as anom]
    [matcher-combinators.test :refer [match?]]
    [opencode.adapter.persistence :as persistence]
    [opencode.domain.session :as session]))
@@ -51,4 +52,14 @@
 (deftest list-empty-store-test
   (testing "list-sessions on empty store returns empty vector"
     (let [store (persistence/create-store)]
+      (is (= [] (persistence/list-sessions store))))))
+
+(deftest save-invalid-session-test
+  (testing "save-session! returns anomaly for invalid session data"
+    (let [store  (persistence/create-store)
+          result (persistence/save-session! store {:not "a session"})]
+      (is (match? {::anom/category ::anom/incorrect
+                   ::anom/message  "Invalid session data"}
+                  result))
+      ;; Verify nothing was stored
       (is (= [] (persistence/list-sessions store))))))
