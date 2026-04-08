@@ -67,6 +67,31 @@
 ;; Interactive REPL loop
 ;; ---------------------------------------------------------------------------
 
+(defn- run-agent-and-save!
+  "Runs the agent loop with try/catch protection. Returns the updated session
+   on success, or falls back to fallback-session on error/anomaly. Displays
+   errors via the UI adapter."
+  [provider session-with-msg tools event-bus ui-adapter context
+   session-store fallback-session]
+  (let [result (try
+                 (agent/run-agent-loop!
+                   {:provider   provider
+                    :session    session-with-msg
+                    :tools      tools
+                    :event-bus  event-bus
+                    :ui-adapter ui-adapter
+                    :context    context})
+                 (catch Exception e
+                   {::anom/category ::anom/fault
+                    ::anom/message  (ex-message e)}))]
+    (if (contains? result ::anom/category)
+      (do
+        (ui/display-error! ui-adapter (str "Agent error: " (::anom/message result)))
+        fallback-session)
+      (do
+        (persistence/save-session! session-store result)
+        result))))
+
 (defn- run-interactive-loop!
   "Runs the main interactive loop. Reads user input, dispatches special commands,
    or sends input to the agent loop for LLM processing.
@@ -90,7 +115,6 @@
           (= "/new" (str/trim input))
           (let [new-session (handle-new-session! model session-store ui-adapter)]
             (if (contains? new-session ::anom/category)
-              ;; Session creation failed — stay on current session
               (recur current-session)
               (recur new-session)))
 
@@ -107,7 +131,6 @@
           :else
           (let [user-msg         (message/user-message (str/trim input))
                 session-with-msg (session/append-message current-session user-msg)]
-            ;; Guard: append-message can return an anomaly on validation failure
             (if (contains? session-with-msg ::anom/category)
               (do
                 (ui/display-error! ui-adapter
@@ -117,20 +140,9 @@
                     context {:ctx/session-id      (:session/id current-session)
                              :ctx/project-dir     project-dir
                              :ctx/dangerous-mode? dangerous-mode?}]
-                (try
-                  (let [result-session (agent/run-agent-loop!
-                                        {:provider   provider
-                                         :session    session-with-msg
-                                         :tools      tools
-                                         :event-bus  event-bus
-                                         :ui-adapter ui-adapter
-                                         :context    context})]
-                    ;; Save updated session to store
-                    (persistence/save-session! session-store result-session)
-                    (recur result-session))
-                  (catch Exception e
-                    (ui/display-error! ui-adapter (str "Unexpected error: " (ex-message e)))
-                    (recur current-session)))))))))))
+                (recur (run-agent-and-save!
+                         provider session-with-msg tools event-bus ui-adapter
+                         context session-store current-session))))))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Entry point
