@@ -81,6 +81,20 @@
 ;; Tool execution
 ;; ---------------------------------------------------------------------------
 
+(defn- invoke-and-publish!
+  "Invokes a tool, displays the result, publishes :tool/completed, and returns
+   a tool-result message. Shared helper to avoid duplicating this logic across
+   the :allow and :ask-then-:approved permission branches."
+  [tool-name tool-id params context event-bus ui-adapter]
+  (let [result      (tool/invoke-tool! tool-name params context)
+        result-text (or (:output result) (pr-str result))]
+    (when ui-adapter
+      (ui/display-tool-result! ui-adapter tool-name result-text))
+    (when event-bus
+      (event-bus/publish! event-bus :tool/completed {:tool-name tool-name
+                                                     :result    result}))
+    (message/tool-result tool-id result-text)))
+
 (defn- execute-tool-calls!
   "Executes a vector of tool calls, checking permissions and publishing events.
    Returns a vector of tool-result messages."
@@ -104,15 +118,7 @@
                           (permission/request-permission! ui-adapter tool-name params)
                           :denied)]
              (if (= :approved answer)
-               ;; Permission granted — execute
-               (let [result (tool/invoke-tool! tool-name params context)]
-                 (when ui-adapter
-                   (ui/display-tool-result! ui-adapter tool-name
-                                            (or (:output result) (pr-str result))))
-                 (when event-bus
-                   (event-bus/publish! event-bus :tool/completed {:tool-name tool-name
-                                                                  :result    result}))
-                 (message/tool-result tool-id (or (:output result) (pr-str result))))
+               (invoke-and-publish! tool-name tool-id params context event-bus ui-adapter)
                ;; Permission denied
                (do
                  (when event-bus
@@ -120,14 +126,7 @@
                                                                   :result    "Permission denied"}))
                  (message/tool-result tool-id "Permission denied"))))
            ;; Permission :allow — execute directly
-           (let [result (tool/invoke-tool! tool-name params context)]
-             (when ui-adapter
-               (ui/display-tool-result! ui-adapter tool-name
-                                        (or (:output result) (pr-str result))))
-             (when event-bus
-               (event-bus/publish! event-bus :tool/completed {:tool-name tool-name
-                                                              :result    result}))
-             (message/tool-result tool-id (or (:output result) (pr-str result))))))))
+           (invoke-and-publish! tool-name tool-id params context event-bus ui-adapter)))))
    tool-calls))
 
 ;; ---------------------------------------------------------------------------
@@ -147,9 +146,10 @@
      :ui-adapter  — UIAdapter (or nil)
      :context     — tool context map (:ctx/session-id, :ctx/project-dir, :ctx/dangerous-mode?)"
   [{:keys [provider session tools event-bus ui-adapter context]}]
-  (let [system-prompt (prompt/build-system-prompt {} tools)
-        api-tools     (tool/tools-for-api tools)
-        max-tokens    4096]
+  (let [system-prompt  (prompt/build-system-prompt {} tools)
+        api-tools      (tool/tools-for-api tools)
+        max-tokens     4096
+        latest-session (atom session)]
     (try
       (loop [current-session session
              iteration       0]
@@ -163,52 +163,54 @@
               (event-bus/publish! event-bus :session/updated {:session-id (:session/id final-session)}))
             final-session)
 
-          ;; Normal iteration
-          (let [stream-ch  (llm/stream provider (session/get-messages current-session)
-                                       {:system    system-prompt
-                                        :tools     api-tools
-                                        :max-tokens max-tokens})
-                result     (consume-stream! stream-ch event-bus ui-adapter)]
-            ;; Handle error
-            (if (:error result)
-              (let [error-msg (message/assistant-message
-                                (or (:text result)
-                                    (str "Error: " (::anom/message (:error result) "Unknown error")))
-                                nil :error)
-                    err-session (session/append-message current-session error-msg)]
-                (when event-bus
-                  (event-bus/publish! event-bus :llm/error {:error (:error result)}))
-                err-session)
+          ;; Normal iteration — track latest session for error recovery
+          (do
+            (reset! latest-session current-session)
+            (let [stream-ch  (llm/stream provider (session/get-messages current-session)
+                                         {:system    system-prompt
+                                          :tools     api-tools
+                                          :max-tokens max-tokens})
+                  result     (consume-stream! stream-ch event-bus ui-adapter)]
+              ;; Handle error
+              (if (:error result)
+                (let [error-msg (message/assistant-message
+                                  (or (:text result)
+                                      (str "Error: " (::anom/message (:error result) "Unknown error")))
+                                  nil :error)
+                      err-session (session/append-message current-session error-msg)]
+                  (when event-bus
+                    (event-bus/publish! event-bus :llm/error {:error (:error result)}))
+                  err-session)
 
-              ;; Build assistant message from stream result
-              (let [assistant-msg (message/assistant-message
-                                    (:text result)
-                                    (when (seq (:tool-calls result))
-                                      (:tool-calls result))
-                                    (:finish-reason result))
-                    updated-session (session/append-message current-session assistant-msg)]
-                (when event-bus
-                  (event-bus/publish! event-bus :session/updated
-                                     {:session-id (:session/id updated-session)}))
+                ;; Build assistant message from stream result
+                (let [assistant-msg (message/assistant-message
+                                      (:text result)
+                                      (when (seq (:tool-calls result))
+                                        (:tool-calls result))
+                                      (:finish-reason result))
+                      updated-session (session/append-message current-session assistant-msg)]
+                  (when event-bus
+                    (event-bus/publish! event-bus :session/updated
+                                       {:session-id (:session/id updated-session)}))
 
-                (if (seq (:tool-calls result))
-                  ;; Tool calls present — execute them, append results, loop
-                  (let [tool-results (execute-tool-calls!
-                                      (:tool-calls result) context event-bus ui-adapter)
-                        session-with-results (reduce session/append-message
-                                                     updated-session
-                                                     tool-results)]
-                    (recur session-with-results (inc iteration)))
+                  (if (seq (:tool-calls result))
+                    ;; Tool calls present — execute them, append results, loop
+                    (let [tool-results (execute-tool-calls!
+                                        (:tool-calls result) context event-bus ui-adapter)
+                          session-with-results (reduce session/append-message
+                                                       updated-session
+                                                       tool-results)]
+                      (recur session-with-results (inc iteration)))
 
-                  ;; No tool calls — done!
-                  updated-session))))))
+                    ;; No tool calls — done!
+                    updated-session)))))))
       (catch Exception e
         (when event-bus
           (event-bus/publish! event-bus :llm/error {:error (ex-message e)}))
         (let [error-msg (message/assistant-message
                           (str "Internal error: " (ex-message e))
                           nil :error)]
-          (session/append-message session error-msg))))))
+          (session/append-message @latest-session error-msg))))))
 
 (comment
   ;; REPL exploration — requires a running system with provider, tools, etc.
