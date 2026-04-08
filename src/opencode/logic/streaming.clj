@@ -89,20 +89,21 @@
   ([reader]
    (sse-events->channel! reader 64))
   ([reader buf-size]
-   (let [ch (async/chan (async/buffer buf-size))]
-     (async/thread
-       (try
-         (loop [events (seq (read-sse-events reader))]
-           (when events
-             (when (async/>!! ch (first events))
-               (recur (next events)))))
-         (catch Exception e
-           (let [anomaly {::anom/category ::anom/fault
-                          ::anom/message  (ex-message e)}]
-             (async/>!! ch anomaly)))
-         (finally
-           (async/close! ch))))
-     ch)))
+  (let [ch (async/chan (async/buffer buf-size))]
+    (async/thread
+      (try
+        (loop [events (seq (read-sse-events reader))]
+          (when events
+            (when (async/>!! ch (first events))
+              (recur (next events)))))
+        (catch Exception e
+          (let [anomaly {::anom/category ::anom/fault
+                         ::anom/message  (ex-message e)}]
+            (async/>!! ch anomaly)))
+        (finally
+          (async/close! ch)
+          (try (.close reader) (catch Exception _)))))
+    ch)))
 
 (comment
   ;; REPL exploration

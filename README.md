@@ -10,15 +10,17 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
 - **Session 1** — Config system: Aero-based EDN config loading, Malli schema validation, Integrant lifecycle, CLI entry point with `tools.cli`
 - **Session 2** — Core data model: Message schemas and constructors, session manipulation functions, core.async pub/sub event bus
 - **Session 3** — LLM provider abstraction: Protocol definition, model metadata registry, SSE stream parsing utilities
+- **Session 4** — Anthropic provider: Full LLMProvider implementation with HTTP calls via hato, message format conversion, streaming via SSE/core.async, Integrant wiring
 
 ## How It Works
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  system.clj                      │
-│  Integrant wires: :opencode/config               │
-│                   :opencode/event-bus             │
-└────────┬──────────────────────┬──────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                     system.clj                        │
+│  Integrant wires: :opencode/config                    │
+│                   :opencode/event-bus                  │
+│                   :opencode/llm-provider (→ config)    │
+└────────┬──────────────────────┬───────────────────────┘
          │                      │
     config.clj           logic/event_bus.clj
     (Aero + Malli)       (core.async pub/sub)
@@ -29,14 +31,14 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
          │                      │                   │
    domain/message.clj    domain/session.clj    adapter/llm/
    (Malli schemas,       (pure transforms,     ├── provider.clj (protocol)
-    constructors)         token tracking)       └── model_registry.clj
-                                                    (model metadata)
+    constructors)         token tracking)       ├── anthropic.clj (impl)
+                                                └── model_registry.clj
                          logic/streaming.clj
                          (SSE parsing → core.async channels)
 ```
 
 - **Domain layer** (`opencode.domain.*`) — Pure functions and Malli schemas. No I/O, no side effects. Messages are plain maps with namespaced keywords (`:message/role`, `:session/id`). Constructors validate via Malli and return anomaly maps on invalid data.
-- **Adapter layer** (`opencode.adapter.*`) — Side-effecting code at the edges. The `LLMProvider` protocol defines the interface for LLM completions and streaming. The model registry stores static model metadata (context windows, costs, capabilities).
+- **Adapter layer** (`opencode.adapter.*`) — Side-effecting code at the edges. The `LLMProvider` protocol defines the interface for LLM completions and streaming. The Anthropic adapter implements the protocol with real HTTP calls via hato and SSE stream parsing via core.async. The model registry stores static model metadata (context windows, costs, capabilities).
 - **Logic layer** (`opencode.logic.*`) — Orchestration with managed side effects. The event bus uses core.async channels with sliding buffers for pub/sub. SSE streaming utilities parse Anthropic server-sent events into channel-based event streams.
 - **Config** — EDN files read by Aero with `#env` tag literals. Malli validates at startup; invalid config returns cognitect anomaly maps.
 
@@ -63,9 +65,14 @@ clj -M:test
 clj-kondo --lint src test
 ```
 
-## Recent Changes (Session 3)
+## Recent Changes (Session 4)
 
-- Added `opencode.adapter.llm.provider` — `LLMProvider` protocol with `complete`, `stream`, and `list-models` methods. `CompletionOpts` Malli schema for request options (system prompt, tools, max-tokens, temperature).
-- Added `opencode.adapter.llm.model-registry` — Static model metadata for Claude Sonnet 4 and Claude Haiku 3.5. `ModelInfo` Malli schema. Lookup functions: `get-model` (returns anomaly for unknown IDs), `models-for-provider`, `all-models`, `validate-model`.
-- Added `opencode.logic.streaming` — SSE parsing for Anthropic Messages API. `parse-sse-event` parses individual events, `read-sse-events` reads a BufferedReader as a lazy seq, `sse-events->channel` wraps it in `async/thread` for channel-based consumption. Ping events are filtered out.
-- Comprehensive tests for model registry and streaming using `matcher-combinators`.
+- Added `opencode.adapter.llm.anthropic` — Full `LLMProvider` implementation for the Anthropic Messages API:
+  - `messages->anthropic` / `anthropic-response->message` for bidirectional message format conversion
+  - `complete` — synchronous POST to `/v1/messages`, parses JSON response to domain assistant message
+  - `stream` — streaming POST with `{:stream true}`, SSE events parsed via `sse-events->channel!` and transformed into domain stream events (`:text-delta`, `:done`, `:error`)
+  - Tool call data is accumulated across `content_block_start` / `input_json_delta` / `content_block_stop` events and included in the final `:done` message
+  - HTTP error mapping to cognitect anomaly categories (401→forbidden, 429→busy, 500+→fault)
+  - Integrant component `:opencode/llm-provider` wired with dependency on `:opencode/config`
+- Updated `opencode.system` — Added `:opencode/llm-provider {:config (ig/ref :opencode/config)}` to system config
+- 36 tests, 132 assertions, 0 failures. clj-kondo: 0 errors, 0 warnings.
