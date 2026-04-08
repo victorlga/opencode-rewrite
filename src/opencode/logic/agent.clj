@@ -39,9 +39,17 @@
   [stream-ch event-bus ui-adapter]
   (loop [text-acc    (StringBuilder.)
          tool-calls  []]
-    (let [[evt _] (async/alts!! [stream-ch (async/timeout stream-read-timeout-ms)])]
+    (let [timeout-ch (async/timeout stream-read-timeout-ms)
+          [evt port] (async/alts!! [stream-ch timeout-ch])]
       (cond
-        ;; Timeout or channel closed — finalize with what we have
+        ;; Timeout — distinguish from normal channel close
+        (and (nil? evt) (= port timeout-ch))
+        {:text          (let [s (str text-acc)] (when-not (empty? s) s))
+         :tool-calls    tool-calls
+         :finish-reason :timeout
+         :error         nil}
+
+        ;; Channel closed — finalize with what we have
         (nil? evt)
         {:text          (let [s (str text-acc)] (when-not (empty? s) s))
          :tool-calls    tool-calls
@@ -171,8 +179,8 @@
                                           :tools     api-tools
                                           :max-tokens max-tokens})
                   result     (consume-stream! stream-ch event-bus ui-adapter)]
-              ;; Handle error
-              (if (:error result)
+              ;; Handle error or timeout
+              (if (or (:error result) (= :timeout (:finish-reason result)))
                 (let [error-msg (message/assistant-message
                                   (or (:text result)
                                       (str "Error: " (::anom/message (:error result) "Unknown error")))

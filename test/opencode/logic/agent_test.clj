@@ -12,7 +12,8 @@
    [opencode.logic.event-bus :as event-bus]
    [opencode.logic.ui :as ui]
    ;; Load tool adapters so execute-tool! multimethods are registered
-   opencode.adapter.tool.file-read))
+   opencode.adapter.tool.file-read
+   opencode.adapter.tool.file-write))
 
 ;; ---------------------------------------------------------------------------
 ;; Test helpers
@@ -251,6 +252,81 @@
                       :context    (mock-context (:session/id s))})]
       (is (not (message/anomaly? result)))
       (is (= 2 (count (session/get-messages result)))))))
+
+(defn- mock-ui-denying
+  "Creates a UIAdapter that denies all permission requests."
+  []
+  (reify ui/UIAdapter
+    (display-text! [_ _text])
+    (display-tool-call! [_ _tool-name _params])
+    (display-tool-result! [_ _tool-name _result])
+    (display-error! [_ _error])
+    (ask-permission! [_ _tool-name _params] :denied)
+    (get-input! [_ _prompt] "")))
+
+(deftest permission-ask-approved-test
+  (testing "agent loop exercises :ask permission path when dangerous-mode? is false"
+    (let [tmp-file (java.io.File/createTempFile "perm-test" ".txt")]
+      (spit tmp-file "permission test content")
+      (try
+        (let [bus      (event-bus/create-bus)
+              ui       (mock-ui)  ;; returns :approved
+              s        (session/create-session "test-model")
+              s-with-msg (session/append-message s (message/user-message "Read a file"))
+              ;; read_file is :allow in permission table, so use it but check
+              ;; that write_file (which is :ask) goes through the ask path
+              provider (make-tool-then-text-provider
+                         "tc_perm" "write_file"
+                         {:path (.getAbsolutePath tmp-file) :content "new content"}
+                         "Done writing")
+              ctx      {:ctx/session-id      (:session/id s)
+                        :ctx/project-dir     "/tmp"
+                        :ctx/dangerous-mode? false}  ;; NOT dangerous mode
+              result   (agent/run-agent-loop!
+                         {:provider   provider
+                          :session    s-with-msg
+                          :tools      (tool/all-tools)
+                          :event-bus  bus
+                          :ui-adapter ui
+                          :context    ctx})]
+          (is (not (message/anomaly? result)))
+          ;; Should have 4 messages: user + assistant(tool-call) + tool-result + assistant(text)
+          (let [msgs (session/get-messages result)]
+            (is (= 4 (count msgs)))
+            ;; Tool result message should exist (permission was :ask -> :approved)
+            (is (= :tool (:message/role (nth msgs 2))))
+            (is (= "tc_perm" (:message/tool-call-id (nth msgs 2)))))
+          (event-bus/close-bus! bus))
+        (finally
+          (.delete tmp-file))))))
+
+(deftest permission-ask-denied-test
+  (testing "agent loop returns 'Permission denied' when UI denies the tool"
+    (let [bus      (event-bus/create-bus)
+          ui       (mock-ui-denying)  ;; returns :denied
+          s        (session/create-session "test-model")
+          s-with-msg (session/append-message s (message/user-message "Write something"))
+          provider (make-tool-then-text-provider
+                     "tc_deny" "write_file"
+                     {:path "/tmp/denied.txt" :content "nope"}
+                     "Done")
+          ctx      {:ctx/session-id      (:session/id s)
+                    :ctx/project-dir     "/tmp"
+                    :ctx/dangerous-mode? false}
+          result   (agent/run-agent-loop!
+                     {:provider   provider
+                      :session    s-with-msg
+                      :tools      (tool/all-tools)
+                      :event-bus  bus
+                      :ui-adapter ui
+                      :context    ctx})]
+      (is (not (message/anomaly? result)))
+      (let [msgs (session/get-messages result)]
+        (is (= 4 (count msgs)))
+        ;; Tool result should say "Permission denied"
+        (is (= :tool (:message/role (nth msgs 2))))
+        (is (= "Permission denied" (:message/content (nth msgs 2)))))
+      (event-bus/close-bus! bus))))
 
 (deftest event-bus-receives-events-test
   (testing "agent loop publishes :session/updated events to the bus"
