@@ -27,7 +27,7 @@
   "Returns a usage summary string."
   [summary]
   (str "opencode-rewrite -- AI coding agent in Clojure\n\n"
-       "Usage: clj -M -m opencode.main [options]\n\n"
+       "Usage: clj -M:run [options]\n\n"
        "Options:\n"
        summary))
 
@@ -51,7 +51,7 @@
             (ui/display-error! ui (str "Failed to save session: " (::anom/message saved)))
             saved)
           (do
-            (ui/display-text! ui (str "New session created: " (:session/id new-session)))
+            (ui/display-text! ui (str "New session created: " (:session/id new-session) "\n"))
             new-session))))))
 
 (defn- handle-list-sessions!
@@ -59,9 +59,9 @@
   [store ui]
   (let [sessions (persistence/list-sessions store)]
     (if (empty? sessions)
-      (ui/display-text! ui "No sessions found.")
+      (ui/display-text! ui "No sessions found.\n")
       (doseq [s sessions]
-        (ui/display-text! ui (str "  " (:session/id s) "  " (:session/title s)))))))
+        (ui/display-text! ui (str "  " (:session/id s) "  " (:session/title s) "\n"))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Interactive REPL loop
@@ -107,11 +107,11 @@
         (cond
           ;; EOF or interrupt — exit
           (nil? input)
-          (ui/display-text! ui-adapter "Goodbye!")
+          (ui/display-text! ui-adapter "Goodbye!\n")
 
           ;; Special commands
           (contains? #{"/quit" "/exit"} (str/trim input))
-          (ui/display-text! ui-adapter "Goodbye!")
+          (ui/display-text! ui-adapter "Goodbye!\n")
 
           (= "/new" (str/trim input))
           (let [new-session (handle-new-session! model session-store ui-adapter)]
@@ -187,9 +187,9 @@
                                     (System/getProperty "user.dir"))
                 dangerous-mode? (boolean (:dangerously-skip-permissions options))]
             (ui/display-text! ui-adapter
-                              (str "opencode-rewrite v" version " | model: " model))
+                              (str "\nopencode-rewrite v" version " | model: " model "\n"))
             (ui/display-text! ui-adapter
-                              "Type your message, or /quit to exit, /new for new session, /sessions to list.")
+                              "Type your message, or /quit to exit, /new for new session, /sessions to list.\n")
             (run-interactive-loop!
               {:provider        provider
                :session-store   session-store

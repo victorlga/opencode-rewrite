@@ -23,6 +23,10 @@
     lambdaisland/kaocha      {:mvn/version "1.91.1392"}
     nubank/matcher-combinators {:mvn/version "3.9.1"}}}
 
+  :run
+  {:jvm-opts ["--enable-native-access=ALL-UNNAMED"]
+   :main-opts ["-m" "opencode.main"]}
+
   :test
   {:extra-paths ["test"]
    :extra-deps
