@@ -110,28 +110,20 @@
 
           :else
           (let [content (slurp abs-path)]
-            (cond
+            (if-let [idx (exact-match content old-str)]
               ;; Strategy 1: exact match
-              (exact-match content old-str)
-              (let [idx       (str/index-of content old-str)
-                    last-idx  (str/last-index-of content old-str)
-                    unique?   (= idx last-idx)]
+              (let [last-idx   (str/last-index-of content old-str)
+                    unique?    (= idx last-idx)
+                    new-content (str (subs content 0 idx)
+                                    new-str
+                                    (subs content (+ idx (count old-str))))]
+                (spit abs-path new-content)
                 (if unique?
-                  (let [new-content (str (subs content 0 idx)
-                                        new-str
-                                        (subs content (+ idx (count old-str))))]
-                    (spit abs-path new-content)
-                    {:output (str "Edited " abs-path ": replaced " (count old-str) " chars")})
-                  ;; Multiple matches — replace first occurrence
-                  (let [new-content (str (subs content 0 idx)
-                                        new-str
-                                        (subs content (+ idx (count old-str))))]
-                    (spit abs-path new-content)
-                    {:output (str "Edited " abs-path ": replaced first occurrence of "
-                                  (count old-str) " chars (multiple matches found)")})))
+                  {:output (str "Edited " abs-path ": replaced " (count old-str) " chars")}
+                  {:output (str "Edited " abs-path ": replaced first occurrence of "
+                                (count old-str) " chars (multiple matches found)")}))
 
               ;; Strategy 2: whitespace-normalized match (trim each line)
-              :else
               (if-let [[start end] (whitespace-normalized-match content old-str)]
                 (let [new-content (str (subs content 0 start)
                                       new-str

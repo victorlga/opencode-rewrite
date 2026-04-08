@@ -34,14 +34,15 @@
 ;; Helpers
 ;; ---------------------------------------------------------------------------
 
-(defn- ripgrep-available?
-  "Returns true if ripgrep (rg) is on the PATH, false otherwise."
-  []
-  (try
-    (let [result (p/process ["which" "rg"] {:out :string :err :string})]
-      (zero? (:exit @result)))
-    (catch Exception _
-      false)))
+(def ^:private ripgrep-available?
+  "Delay that resolves to true if ripgrep (rg) is on the PATH, false otherwise.
+   Memoized via delay — shells out to `which rg` only once."
+  (delay
+    (try
+      (let [result (p/process ["which" "rg"] {:out :string :err :string})]
+        (zero? (:exit @result)))
+      (catch Exception _
+        false))))
 
 (defn- build-command
   "Builds the grep command vector. Prefers ripgrep if available."
@@ -83,7 +84,7 @@
                         (str (fs/path project-dir raw-path)))
           pattern     (:pattern params)
           include     (:include params)
-          use-rg?     (ripgrep-available?)
+          use-rg?     @ripgrep-available?
           cmd         (build-command pattern search-path include use-rg?)
           proc        (p/process cmd {:out :string :err :string})
           result      @proc
