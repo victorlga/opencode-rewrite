@@ -15,6 +15,7 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
 - **Session 6** — Complete tool suite: `edit_file` (search/replace with exact + whitespace-normalized matching), `bash` (shell execution with timeout + truncation), `grep` (ripgrep/grep with output parsing + truncation)
 - **Session 7** — Infrastructure for the agentic loop: UI adapter protocol + JLine REPL implementation, atom-backed session persistence, permission system (allow/ask rules with dangerous-mode override)
 - **Session 8** — The brain: System prompt construction and core agentic loop (stream → tool calls → loop until done, max 25 iterations guard, error handling, event publishing)
+- **Session 9** — **MVP MILESTONE**: Main entry point with interactive REPL loop, full Integrant system wiring, all tool namespaces loaded at startup. The application is now a working agentic coding assistant.
 
 ## How It Works
 
@@ -93,16 +94,16 @@ clj -M:test
 clj-kondo --lint src test
 ```
 
-## Recent Changes (Session 8)
+## Recent Changes (Session 9 — MVP)
 
-- Added `opencode.logic.prompt` — System prompt builder:
-  - `build-system-prompt` constructs a prompt string from config and tools
-  - Includes: role, working directory, OS info, current date, tool listing, instructions
-- Added `opencode.logic.agent` — Core agentic loop (the brain):
-  - `run-agent-loop!` — sends messages to LLM, consumes streaming responses, executes tool calls, loops until done
-  - `consume-stream!` — reads LLM stream channel, accumulates text deltas and tool calls, publishes `:llm/stream-delta` events
-  - `execute-tool-calls!` — checks permissions via `permission/check-permission`, requests approval via UI adapter, invokes tools, publishes `:tool/executing` and `:tool/completed` events
-  - Max 25 iterations guard prevents infinite tool-call loops
-  - Error handling: stream errors → session with error message; exceptions → caught and returned as anomaly-style messages
-  - All user output goes through UIAdapter (AGENTS.md compliance)
-- 111 tests, 275 assertions, 0 failures. clj-kondo: 0 errors, 0 warnings.
+- Updated `opencode.main` — Interactive REPL loop:
+  - Starts Integrant system, registers shutdown hook for clean teardown
+  - Creates initial session, displays welcome message with model name
+  - Main loop: reads input via `ui/get-input!`, dispatches to agent loop for LLM processing
+  - Special commands: `/quit`, `/exit`, `/new` (new session), `/sessions` (list sessions)
+  - Saves updated sessions to persistence store after each agent loop iteration
+  - All user output goes through UIAdapter (AGENTS.md compliance — no direct println in business logic)
+- Updated `opencode.system` — Full Integrant wiring:
+  - All 6 tool adapter namespaces required at startup (bash, file_edit, file_read, file_write, glob, grep)
+  - Ensures defmethod registrations execute before first tool call
+- 113 tests, 283 assertions, 0 failures. clj-kondo: 0 errors, 0 warnings.

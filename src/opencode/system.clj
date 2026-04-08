@@ -4,9 +4,18 @@
    Components are wired via Integrant refs for dependency injection."
   (:require
    [integrant.core :as ig]
+   ;; Adapter namespaces — required so their Integrant init-key/halt-key! and
+   ;; defmethod registrations execute at load time.
    [opencode.adapter.llm.anthropic]
    [opencode.adapter.persistence]
+   [opencode.adapter.tool.bash]
+   [opencode.adapter.tool.file-edit]
+   [opencode.adapter.tool.file-read]
+   [opencode.adapter.tool.file-write]
+   [opencode.adapter.tool.glob]
+   [opencode.adapter.tool.grep]
    [opencode.adapter.ui.repl]
+   ;; Domain + logic namespaces with Integrant methods
    [opencode.config]
    [opencode.logic.event-bus]))
 
