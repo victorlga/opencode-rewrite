@@ -45,18 +45,20 @@
         (is (= "hello world\nreplaced\nbaz qux" (slurp file-path)))))))
 
 (deftest whitespace-normalized-match-test
-  (testing "whitespace-normalized matching works (extra indentation in file)"
+  (testing "whitespace-normalized matching works (multi-line with extra indentation)"
     (let [file-path (str (fs/path *tmp-dir* "ws.txt"))]
-      (spit file-path "  hello world\n    foo bar\n  baz qux")
+      ;; File has indented lines; old_string has same text without leading spaces.
+      ;; "alpha\nbeta" is NOT an exact substring of "  alpha\n    beta" but
+      ;; after trimming each line, they match.
+      (spit file-path "header\n  alpha\n    beta\nfooter")
       (let [result (tool/execute-tool! "edit_file"
                                         {:path "ws.txt"
-                                         :old_string "foo bar"
-                                         :new_string "replaced"}
+                                         :old_string "alpha\nbeta"
+                                         :new_string "REPLACED"}
                                         (make-context))]
-        ;; whitespace-normalized should match "    foo bar" -> "replaced"
-        (is (match? {:output #"Edited"} result))
-        (let [new-content (slurp file-path)]
-          (is (not (.contains ^String new-content "foo bar"))))))))
+        (is (match? {:output #"whitespace normalization"} result))
+        ;; Verify exact resulting content — surrounding lines preserved
+        (is (= "header\nREPLACED\nfooter" (slurp file-path)))))))
 
 (deftest not-found-returns-anomaly-test
   (testing "returns anomaly with context when old_string not found"

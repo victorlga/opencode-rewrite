@@ -29,8 +29,7 @@
 (defn- exact-match
   "Returns the index of old-str in content, or nil if not found."
   [content old-str]
-  (let [idx (str/index-of content old-str)]
-    (when idx idx)))
+  (str/index-of content old-str))
 
 (defn- whitespace-normalized-match
   "Finds matching lines in content where each line matches old-str's lines
@@ -132,21 +131,19 @@
                                   (count old-str) " chars (multiple matches found)")})))
 
               ;; Strategy 2: whitespace-normalized match (trim each line)
-              (whitespace-normalized-match content old-str)
-              (let [[start end] (whitespace-normalized-match content old-str)
-                    new-content  (str (subs content 0 start)
-                                     new-str
-                                     (subs content end))]
-                (spit abs-path new-content)
-                {:output (str "Edited " abs-path ": replaced " (count old-str)
-                              " chars (matched after whitespace normalization)")})
-
-              ;; Strategy 3: not found — return anomaly with context
               :else
-              (let [snippet (find-nearest-lines content old-str)]
-                {::anom/category ::anom/not-found
-                 ::anom/message  (str "old_string not found in " abs-path
-                                      ". Nearest lines:\n" snippet)}))))
+              (if-let [[start end] (whitespace-normalized-match content old-str)]
+                (let [new-content (str (subs content 0 start)
+                                      new-str
+                                      (subs content end))]
+                  (spit abs-path new-content)
+                  {:output (str "Edited " abs-path ": replaced " (count old-str)
+                                " chars (matched after whitespace normalization)")})
+                ;; Strategy 3: not found — return anomaly with context
+                (let [snippet (find-nearest-lines content old-str)]
+                  {::anom/category ::anom/not-found
+                   ::anom/message  (str "old_string not found in " abs-path
+                                        ". Nearest lines:\n" snippet)})))))
         (catch Exception e
           {::anom/category ::anom/fault
            ::anom/message  (ex-message e)})))))
