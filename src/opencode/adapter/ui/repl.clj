@@ -107,6 +107,8 @@
   []
   (let [terminal (-> (TerminalBuilder/builder)
                      (.system true)
+                     (.jna false)
+                     (.jansi false)
                      (.build))
         reader   (-> (LineReaderBuilder/builder)
                      (.terminal terminal)

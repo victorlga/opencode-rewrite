@@ -153,8 +153,8 @@ clj -M:test
 # Lint
 clj-kondo --lint src test
 
-# Run the application
-clj -M -m opencode.main
+# Run the application (suppresses JLine native-access warnings)
+clj -M:run
 
 # Build uberjar
 clj -T:build uber
