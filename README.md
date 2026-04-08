@@ -14,6 +14,7 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
 - **Session 5** — Tool system: Tool framework with registry, multimethod dispatch, JSON Schema conversion via Malli. Three tool implementations: `read_file`, `write_file`, `glob`
 - **Session 6** — Complete tool suite: `edit_file` (search/replace with exact + whitespace-normalized matching), `bash` (shell execution with timeout + truncation), `grep` (ripgrep/grep with output parsing + truncation)
 - **Session 7** — Infrastructure for the agentic loop: UI adapter protocol + JLine REPL implementation, atom-backed session persistence, permission system (allow/ask rules with dangerous-mode override)
+- **Session 8** — The brain: System prompt construction and core agentic loop (stream → tool calls → loop until done, max 25 iterations guard, error handling, event publishing)
 
 ## How It Works
 
@@ -56,6 +57,12 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
 
                          logic/permission.clj
                          (allow/ask rule table)
+
+                         logic/prompt.clj
+                         (system prompt builder)
+
+                         logic/agent.clj
+                         (core agentic loop)
 ```
 
 - **Domain layer** (`opencode.domain.*`) — Pure functions and Malli schemas. No I/O, no side effects. Messages are plain maps with namespaced keywords (`:message/role`, `:session/id`). Constructors validate via Malli and return anomaly maps on invalid data.
@@ -86,22 +93,16 @@ clj -M:test
 clj-kondo --lint src test
 ```
 
-## Recent Changes (Session 7)
+## Recent Changes (Session 8)
 
-- Added `opencode.logic.ui` — `UIAdapter` protocol (port):
-  - Six methods: `display-text!`, `display-tool-call!`, `display-tool-result!`, `display-error!`, `ask-permission!`, `get-input!`
-  - All user-facing I/O goes through this protocol (AGENTS.md compliance)
-- Added `opencode.adapter.ui.repl` — `ReplUI` JLine implementation:
-  - ANSI color-coded output (white text, cyan tool calls, dim results, red errors, yellow permission prompts)
-  - JLine 3 `LineReader` for interactive input and permission prompts
-  - Wired as Integrant component `:opencode/ui`
-- Added `opencode.adapter.persistence` — Atom-backed `SessionStore`:
-  - `save-session!`, `load-session`, `list-sessions` (sorted newest first), `delete-session!`
-  - Designed for easy migration to DataScript or SQLite later
-  - Wired as Integrant component `:opencode/session-store`
-- Added `opencode.logic.permission` — Permission checking:
-  - Default rules: read-only tools (read_file, glob, grep) → `:allow`; write/shell tools → `:ask`
-  - `--dangerously-skip-permissions` overrides all to `:allow`
-  - `request-permission!` delegates to UI adapter for interactive approval
-- Updated `system.clj` with `:opencode/ui` and `:opencode/session-store` components
-- 98 tests, 233 assertions, 0 failures. clj-kondo: 0 errors, 0 warnings.
+- Added `opencode.logic.prompt` — System prompt builder:
+  - `build-system-prompt` constructs a prompt string from config and tools
+  - Includes: role, working directory, OS info, current date, tool listing, instructions
+- Added `opencode.logic.agent` — Core agentic loop (the brain):
+  - `run-agent-loop!` — sends messages to LLM, consumes streaming responses, executes tool calls, loops until done
+  - `consume-stream!` — reads LLM stream channel, accumulates text deltas and tool calls, publishes `:llm/stream-delta` events
+  - `execute-tool-calls!` — checks permissions via `permission/check-permission`, requests approval via UI adapter, invokes tools, publishes `:tool/executing` and `:tool/completed` events
+  - Max 25 iterations guard prevents infinite tool-call loops
+  - Error handling: stream errors → session with error message; exceptions → caught and returned as anomaly-style messages
+  - All user output goes through UIAdapter (AGENTS.md compliance)
+- 111 tests, 275 assertions, 0 failures. clj-kondo: 0 errors, 0 warnings.

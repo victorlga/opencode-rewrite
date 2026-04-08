@@ -167,11 +167,14 @@
 (defn- build-request-body
   "Builds the Anthropic API request body map from messages and options."
   [model-id messages opts]
-  (let [{:keys [messages system]} (messages->anthropic messages)]
+  (let [{:keys [messages system]} (messages->anthropic messages)
+        ;; Prefer :system from opts (set by agent loop's build-system-prompt),
+        ;; fall back to system extracted from system-role messages in the vector.
+        effective-system (or (:system opts) system)]
     (cond-> {:model      model-id
              :messages   messages
              :max_tokens (or (:max-tokens opts) 4096)}
-      system               (assoc :system system)
+      effective-system       (assoc :system effective-system)
       (:tools opts)        (assoc :tools (:tools opts))
       (:temperature opts)  (assoc :temperature (:temperature opts)))))
 
