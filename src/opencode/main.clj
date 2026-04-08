@@ -6,6 +6,7 @@
   (:require
    [clojure.string :as str]
    [clojure.tools.cli :as cli]
+   [cognitect.anomalies :as anom]
    [opencode.adapter.persistence :as persistence]
    [opencode.domain.message :as message]
    [opencode.domain.session :as session]
@@ -87,22 +88,32 @@
 
           ;; Normal input — send to agent loop
           :else
-          (let [user-msg        (message/user-message (str/trim input))
-                session-with-msg (session/append-message current-session user-msg)
-                tools            (tool/all-tools)
-                context          {:ctx/session-id      (:session/id current-session)
-                                  :ctx/project-dir     project-dir
-                                  :ctx/dangerous-mode? dangerous-mode?}
-                result-session   (agent/run-agent-loop!
-                                   {:provider   provider
-                                    :session    session-with-msg
-                                    :tools      tools
-                                    :event-bus  event-bus
-                                    :ui-adapter ui-adapter
-                                    :context    context})]
-            ;; Save updated session to store
-            (persistence/save-session! session-store result-session)
-            (recur result-session)))))))
+          (let [user-msg         (message/user-message (str/trim input))
+                session-with-msg (session/append-message current-session user-msg)]
+            ;; Guard: append-message can return an anomaly on validation failure
+            (if (contains? session-with-msg ::anom/category)
+              (do
+                (ui/display-error! ui-adapter
+                                   (str "Failed to add message: " (::anom/message session-with-msg)))
+                (recur current-session))
+              (let [tools   (tool/all-tools)
+                    context {:ctx/session-id      (:session/id current-session)
+                             :ctx/project-dir     project-dir
+                             :ctx/dangerous-mode? dangerous-mode?}]
+                (try
+                  (let [result-session (agent/run-agent-loop!
+                                        {:provider   provider
+                                         :session    session-with-msg
+                                         :tools      tools
+                                         :event-bus  event-bus
+                                         :ui-adapter ui-adapter
+                                         :context    context})]
+                    ;; Save updated session to store
+                    (persistence/save-session! session-store result-session)
+                    (recur result-session))
+                  (catch Exception e
+                    (ui/display-error! ui-adapter (str "Unexpected error: " (ex-message e)))
+                    (recur current-session)))))))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Entry point
@@ -127,10 +138,14 @@
       (println (str "opencode-rewrite " version))
 
       :else
-      (let [sys (system/start!)]
-        ;; Register shutdown hook for clean teardown
+      (let [sys      (system/start!)
+            stopped? (atom false)
+            stop-once! (fn []
+                         (when (compare-and-set! stopped? false true)
+                           (system/stop! sys)))]
+        ;; Register shutdown hook for clean teardown (guarded by stop-once!)
         (.addShutdownHook (Runtime/getRuntime)
-                          (Thread. ^Runnable #(system/stop! sys)))
+                          (Thread. ^Runnable stop-once!))
         (try
           (let [config          (:opencode/config sys)
                 provider        (:opencode/llm-provider sys)
@@ -154,7 +169,7 @@
                :project-dir     project-dir
                :dangerous-mode? dangerous-mode?}))
           (finally
-            (system/stop! sys)))))))
+            (stop-once!)))))))
 
 (comment
   ;; REPL exploration
