@@ -1,7 +1,8 @@
-(ns opencode.adapter.ui.protocol
-  "UI adapter protocol for opencode.
+(ns opencode.logic.ui
+  "UI adapter protocol (port) for opencode.
    Defines the contract for all user-facing I/O. Business logic never calls
    println directly — it goes through this protocol (AGENTS.md compliance).
+   Lives in logic layer because it's a port definition, not an adapter.
    MVP implementation: ReplUI (JLine readline). Future: TUI via event bus.")
 
 (defprotocol UIAdapter

@@ -46,9 +46,10 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
                                                ├── bash.clj (bash)
                                                └── grep.clj (grep)
 
-   adapter/ui/                                 adapter/persistence.clj
-   ├── protocol.clj (UIAdapter)                (atom-backed SessionStore)
-   └── repl.clj (JLine ReplUI)
+   logic/ui.clj (UIAdapter protocol/port)      adapter/persistence.clj
+                                                (atom-backed SessionStore)
+   adapter/ui/
+   └── repl.clj (JLine ReplUI impl)
 
                          logic/streaming.clj
                          (SSE parsing → core.async channels)
@@ -87,7 +88,7 @@ clj-kondo --lint src test
 
 ## Recent Changes (Session 7)
 
-- Added `opencode.adapter.ui.protocol` — `UIAdapter` protocol:
+- Added `opencode.logic.ui` — `UIAdapter` protocol (port):
   - Six methods: `display-text!`, `display-tool-call!`, `display-tool-result!`, `display-error!`, `ask-permission!`, `get-input!`
   - All user-facing I/O goes through this protocol (AGENTS.md compliance)
 - Added `opencode.adapter.ui.repl` — `ReplUI` JLine implementation:

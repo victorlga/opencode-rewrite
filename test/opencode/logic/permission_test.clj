@@ -1,7 +1,7 @@
 (ns opencode.logic.permission-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [opencode.adapter.ui.protocol :as ui]
+   [opencode.logic.ui :as ui]
    [opencode.logic.permission :as permission]))
 
 (def ^:private safe-context

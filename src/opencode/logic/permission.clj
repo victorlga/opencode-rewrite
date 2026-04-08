@@ -5,7 +5,7 @@
    :ask. The --dangerously-skip-permissions flag overrides all to :allow.
    No persistence or multi-layer merge for MVP — just a flat lookup table."
   (:require
-   [opencode.adapter.ui.protocol :as ui]))
+   [opencode.logic.ui :as ui]))
 
 ;; ---------------------------------------------------------------------------
 ;; Default permission rules

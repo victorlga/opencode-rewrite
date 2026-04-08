@@ -1,7 +1,7 @@
 (ns opencode.adapter.ui.repl-test
   (:require
    [clojure.test :refer [deftest is testing]]
-   [opencode.adapter.ui.protocol :as ui]
+   [opencode.logic.ui :as ui]
    [opencode.adapter.ui.repl :as repl]))
 
 (deftest ansi-wraps-text-test

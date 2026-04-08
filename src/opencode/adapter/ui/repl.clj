@@ -5,7 +5,7 @@
   (:require
    [clojure.string :as str]
    [integrant.core :as ig]
-   [opencode.adapter.ui.protocol :as ui])
+   [opencode.logic.ui :as ui])
   (:import
    (org.jline.reader LineReaderBuilder)
    (org.jline.terminal TerminalBuilder)))
