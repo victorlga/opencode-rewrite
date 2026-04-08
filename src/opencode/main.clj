@@ -32,6 +32,23 @@
        summary))
 
 ;; ---------------------------------------------------------------------------
+;; Pre-system CLI output (adapter seam for AGENTS.md compliance)
+;; Used only for --help, --version, and CLI parse errors — before the
+;; Integrant system (and thus the UIAdapter) exists.
+;; ---------------------------------------------------------------------------
+
+(defn- cli-print!
+  "Writes a message to stdout. Adapter seam for pre-system output."
+  [msg]
+  (println msg))
+
+(defn- cli-error!
+  "Writes an error message to stderr. Adapter seam for pre-system output."
+  [msg]
+  (binding [*out* *err*]
+    (println msg)))
+
+;; ---------------------------------------------------------------------------
 ;; Special command handlers
 ;; ---------------------------------------------------------------------------
 
@@ -156,16 +173,14 @@
   (let [{:keys [options summary errors]} (cli/parse-opts args cli-options)]
     (cond
       errors
-      (do (binding [*out* *err*]
-            (doseq [e errors]
-              (println e)))
+      (do (doseq [e errors] (cli-error! e))
           (System/exit 1))
 
       (:help options)
-      (println (usage summary))
+      (cli-print! (usage summary))
 
       (:version options)
-      (println (str "opencode-rewrite " version))
+      (cli-print! (str "opencode-rewrite " version))
 
       :else
       (let [sys      (system/start!)
