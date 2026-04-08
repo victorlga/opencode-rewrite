@@ -424,6 +424,14 @@
   (let [{:keys [api-key model]} (:llm config)]
     (make-provider api-key model)))
 
+(defmethod ig/halt-key! :opencode/llm-provider [_ provider]
+  (when-let [client (:http-client provider)]
+    ;; hato's HttpClient doesn't have an explicit close, but shutting down
+    ;; its executor ensures no background threads linger after system stop.
+    (when-let [executor (.executor client)]
+      (when (.isPresent executor)
+        (.shutdownNow (.get executor))))))
+
 (comment
   ;; REPL exploration — message conversion
   (messages->anthropic

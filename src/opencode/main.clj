@@ -37,12 +37,22 @@
 
 (defn- handle-new-session!
   "Creates a new session, saves it to the store, and returns it.
-   Displays a confirmation message via the UI adapter."
+   Displays a confirmation message via the UI adapter.
+   Returns the session on success, or an anomaly map if creation/saving fails."
   [model store ui]
   (let [new-session (session/create-session model)]
-    (persistence/save-session! store new-session)
-    (ui/display-text! ui (str "New session created: " (:session/id new-session)))
-    new-session))
+    (if (contains? new-session ::anom/category)
+      (do
+        (ui/display-error! ui (str "Failed to create session: " (::anom/message new-session)))
+        new-session)
+      (let [saved (persistence/save-session! store new-session)]
+        (if (contains? saved ::anom/category)
+          (do
+            (ui/display-error! ui (str "Failed to save session: " (::anom/message saved)))
+            saved)
+          (do
+            (ui/display-text! ui (str "New session created: " (:session/id new-session)))
+            new-session))))))
 
 (defn- handle-list-sessions!
   "Lists all sessions from the store, displaying their IDs and titles."
@@ -63,6 +73,9 @@
    Returns nil on clean exit."
   [{:keys [provider session-store event-bus ui-adapter model project-dir dangerous-mode?]}]
   (let [initial-session (handle-new-session! model session-store ui-adapter)]
+    (when (contains? initial-session ::anom/category)
+      ;; Fatal — can't start without a valid session. Error already displayed.
+      (throw (ex-info "Cannot create initial session" initial-session)))
     (loop [current-session initial-session]
       (let [input (ui/get-input! ui-adapter "user> ")]
         (cond
@@ -75,7 +88,11 @@
           (ui/display-text! ui-adapter "Goodbye!")
 
           (= "/new" (str/trim input))
-          (recur (handle-new-session! model session-store ui-adapter))
+          (let [new-session (handle-new-session! model session-store ui-adapter)]
+            (if (contains? new-session ::anom/category)
+              ;; Session creation failed — stay on current session
+              (recur current-session)
+              (recur new-session)))
 
           (= "/sessions" (str/trim input))
           (do
