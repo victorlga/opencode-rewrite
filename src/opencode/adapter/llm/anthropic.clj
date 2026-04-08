@@ -179,6 +179,35 @@
 ;; Stream event processing
 ;; ---------------------------------------------------------------------------
 
+(def ^:private stream-timeout-ms
+  "Timeout in milliseconds for waiting on SSE events before finalizing the stream.
+   If the Anthropic API pauses longer than this, the stream silently completes."
+  300000)
+
+(defn- finalize-tool-calls
+  "Finalizes accumulated tool calls, parsing any in-progress tool's JSON arguments."
+  [tool-calls current-tool tool-args-acc]
+  (if current-tool
+    (conj tool-calls
+          (assoc current-tool
+                 :tool-call/arguments
+                 (try
+                   (json/read-value (str tool-args-acc) object-mapper)
+                   (catch Exception _ {}))))
+    tool-calls))
+
+(defn- build-done-event
+  "Builds a :done stream event from accumulated text, tool calls, and stop reason."
+  [text-acc tool-calls current-tool tool-args-acc stop-reason]
+  (let [final-tool-calls (finalize-tool-calls tool-calls current-tool tool-args-acc)
+        text             (let [s (str text-acc)]
+                           (when-not (str/blank? s) s))
+        msg              (message/assistant-message
+                           text
+                           (when (seq final-tool-calls) final-tool-calls)
+                           stop-reason)]
+    {:type :done :message msg}))
+
 (defn- process-stream-events!
   "Consumes SSE events from sse-ch, transforms them into domain stream events,
    and puts them onto out-ch. Accumulates tool call arguments across deltas.
@@ -197,25 +226,11 @@
              current-tool  nil
              tool-args-acc (StringBuilder.)
              stop-reason   :stop]
-        (let [[evt _] (async/alts!! [sse-ch (async/timeout 300000)])]
+        (let [[evt _] (async/alts!! [sse-ch (async/timeout stream-timeout-ms)])]
           (cond
             ;; Timeout or channel closed — finalize
             (nil? evt)
-            (let [final-tool-calls (if current-tool
-                                    (conj tool-calls
-                                          (assoc current-tool
-                                                 :tool-call/arguments
-                                                 (try
-                                                   (json/read-value (str tool-args-acc) object-mapper)
-                                                   (catch Exception _ {}))))
-                                    tool-calls)
-                  text             (let [s (str text-acc)]
-                                    (when-not (str/blank? s) s))
-                  msg              (message/assistant-message
-                                    text
-                                    (when (seq final-tool-calls) final-tool-calls)
-                                    stop-reason)]
-              (async/>!! out-ch {:type :done :message msg}))
+            (async/>!! out-ch (build-done-event text-acc tool-calls current-tool tool-args-acc stop-reason))
 
             ;; Anomaly from SSE parser
             (::anom/category evt)
@@ -247,14 +262,7 @@
                 (let [block (:content_block data)]
                   (if (= "tool_use" (:type block))
                     ;; Finalize previous tool if any, start new one
-                    (let [updated-tools (if current-tool
-                                          (conj tool-calls
-                                                (assoc current-tool
-                                                       :tool-call/arguments
-                                                       (try
-                                                         (json/read-value (str tool-args-acc) object-mapper)
-                                                         (catch Exception _ {}))))
-                                          tool-calls)
+                    (let [updated-tools (finalize-tool-calls tool-calls current-tool tool-args-acc)
                           new-tool {:tool-call/id   (:id block)
                                     :tool-call/name (:name block)}]
                       (recur text-acc updated-tools new-tool (StringBuilder.) stop-reason))
@@ -275,21 +283,7 @@
 
                 :message-stop
                 ;; Stream complete — finalize
-                (let [final-tool-calls (if current-tool
-                                         (conj tool-calls
-                                               (assoc current-tool
-                                                      :tool-call/arguments
-                                                      (try
-                                                        (json/read-value (str tool-args-acc) object-mapper)
-                                                        (catch Exception _ {}))))
-                                         tool-calls)
-                      text             (let [s (str text-acc)]
-                                         (when-not (str/blank? s) s))
-                      msg              (message/assistant-message
-                                         text
-                                         (when (seq final-tool-calls) final-tool-calls)
-                                         stop-reason)]
-                  (async/>!! out-ch {:type :done :message msg}))
+                (async/>!! out-ch (build-done-event text-acc tool-calls current-tool tool-args-acc stop-reason))
 
                 :error
                 (async/>!! out-ch {:type  :error
