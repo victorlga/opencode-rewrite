@@ -65,19 +65,19 @@
         abs-path    (if (fs/absolute? raw-path)
                       raw-path
                       (str (fs/path project-dir raw-path)))]
-    (cond
-      ;; File doesn't exist
-      (not (fs/exists? abs-path))
-      {::anom/category ::anom/not-found
-       ::anom/message  (str "File not found: " abs-path)}
+    (try
+      (cond
+        ;; File doesn't exist
+        (not (fs/exists? abs-path))
+        {::anom/category ::anom/not-found
+         ::anom/message  (str "File not found: " abs-path)}
 
-      ;; Binary file
-      (binary-file? abs-path)
-      {::anom/category ::anom/incorrect
-       ::anom/message  "Binary file detected"}
+        ;; Binary file
+        (binary-file? abs-path)
+        {::anom/category ::anom/incorrect
+         ::anom/message  "Binary file detected"}
 
-      :else
-      (try
+        :else
         (let [content   (slurp abs-path)
               all-lines (str/split-lines content)
               offset    (or (:offset params) 0)
@@ -102,10 +102,10 @@
                   truncated-output (String. byte-arr 0 safe-end "UTF-8")]
               {:output (str truncated-output
                             "\n[Content truncated. Use grep to search or read_file with offset/limit.]")})
-            {:output output}))
-        (catch Exception e
-          {::anom/category ::anom/fault
-           ::anom/message  (ex-message e)})))))
+            {:output output})))
+      (catch Exception e
+        {::anom/category ::anom/fault
+         ::anom/message  (ex-message e)}))))
 
 (comment
   ;; REPL exploration
