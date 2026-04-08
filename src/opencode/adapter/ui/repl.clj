@@ -20,7 +20,6 @@
   [code text]
   (str "\033[" code "m" text "\033[0m"))
 
-(def ^:private ansi-white "0;37")
 (def ^:private ansi-cyan  "1;36")
 (def ^:private ansi-dim   "2")
 (def ^:private ansi-red   "0;31")
@@ -30,22 +29,51 @@
 ;; ReplUI record
 ;; ---------------------------------------------------------------------------
 
+(defn- summarize-params
+  "Creates a concise display string for tool call parameters.
+   Replaces :content with byte count, truncates long string values."
+  [params]
+  (let [display-map (reduce-kv
+                      (fn [m k v]
+                        (assoc m k
+                          (cond
+                            (= k :content)
+                            (str "<" (count (str v)) " bytes>")
+
+                            (and (string? v) (> (count v) 100))
+                            (str (subs v 0 100) "...")
+
+                            :else v)))
+                      {}
+                      params)]
+    (pr-str display-map)))
+
+(defn- summarize-result
+  "Creates a concise first-line summary for tool result display."
+  [result]
+  (let [lines      (str/split-lines result)
+        first-line (first lines)
+        line-count (count lines)]
+    (cond
+      (nil? first-line) ""
+      (> (count first-line) 200) (str (subs first-line 0 200) "...")
+      (> line-count 1)           (str first-line " ... (" (dec line-count) " more lines)")
+      :else                      first-line)))
+
 (defrecord ReplUI [line-reader terminal]
   ui/UIAdapter
 
   (display-text! [_this text]
-    (println (ansi ansi-white text)))
+    (print text)
+    (flush))
 
   (display-tool-call! [_this tool-name params]
     (println (str (ansi ansi-cyan (str "[" tool-name "] "))
-                  (pr-str params))))
+                  (summarize-params params))))
 
   (display-tool-result! [_this tool-name result]
-    (let [summary (if (> (count result) 500)
-                    (str (subs result 0 500) "...")
-                    result)]
-      (println (str (ansi ansi-dim (str "[" tool-name "] "))
-                    (ansi ansi-dim summary)))))
+    (println (str (ansi ansi-dim (str "[" tool-name "] "))
+                  (ansi ansi-dim (summarize-result result)))))
 
   (display-error! [_this error]
     (println (ansi ansi-red (str "Error: " error))))
@@ -79,6 +107,8 @@
   []
   (let [terminal (-> (TerminalBuilder/builder)
                      (.system true)
+                     (.jna false)
+                     (.jansi false)
                      (.build))
         reader   (-> (LineReaderBuilder/builder)
                      (.terminal terminal)

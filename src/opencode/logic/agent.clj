@@ -184,6 +184,9 @@
                                           :tools     api-tools
                                           :max-tokens max-tokens})
                   result     (consume-stream! stream-ch event-bus ui-adapter)]
+              ;; End the streaming text block with a newline
+              (when (and ui-adapter (:text result))
+                (ui/display-text! ui-adapter "\n"))
               ;; Handle error or timeout
               (if (or (:error result) (= :timeout (:finish-reason result)))
                 (let [error-msg (message/assistant-message
