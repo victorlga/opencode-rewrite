@@ -88,8 +88,9 @@
       (do
         (ui/display-error! ui-adapter (str "Agent error: " (::anom/message result)))
         fallback-session)
-      (do
-        (persistence/save-session! session-store result)
+      (let [saved (persistence/save-session! session-store result)]
+        (when (contains? saved ::anom/category)
+          (ui/display-error! ui-adapter (str "Failed to save session: " (::anom/message saved))))
         result))))
 
 (defn- run-interactive-loop!
