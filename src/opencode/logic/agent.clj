@@ -125,8 +125,13 @@
            (let [answer (if ui-adapter
                           (permission/request-permission! ui-adapter tool-name params)
                           :denied)]
-             (if (= :approved answer)
-               (invoke-and-publish! tool-name tool-id params context event-bus ui-adapter)
+              (if (= :approved answer)
+                ;; User approved — override dangerous-mode? so tools trust the
+                ;; permission layer's decision (avoids the double-guard problem
+                ;; where write_file's own dangerous-mode? check rejects after approval).
+                (invoke-and-publish! tool-name tool-id params
+                                     (assoc context :ctx/dangerous-mode? true)
+                                     event-bus ui-adapter)
                ;; Permission denied
                (do
                  (when event-bus
