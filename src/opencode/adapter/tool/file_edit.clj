@@ -1,6 +1,6 @@
 (ns opencode.adapter.tool.file-edit
   "EditTool — search/replace with fuzzy matching.
-   Tries exact match first, then whitespace-normalized, then line-trimmed.
+   Tries exact match first, then whitespace-normalized matching.
    Replaces only the first occurrence unless old-string appears once.
    Registered as \"edit_file\" in the tool registry on namespace load."
   (:require
@@ -58,8 +58,10 @@
               (recur (inc i)))))))))
 
 (defn- find-nearest-lines
-  "Returns a context snippet of the 5 lines most similar to the start
-   of old-str, for inclusion in the error message."
+  "Returns a 5-line context snippet around the best-matching line for the
+   start of old-str, for inclusion in the error message. Matches by
+   case-insensitive substring containment; falls back to first 5 lines
+   when nothing matches."
   [content old-str]
   (let [content-lines  (str/split-lines content)
         search-first   (str/trim (first (str/split-lines old-str)))

@@ -40,18 +40,18 @@
 (defn- truncate-output
   "Truncates output to max-output-bytes at a UTF-8 safe boundary."
   [^String output]
-  (if (<= (count (.getBytes output "UTF-8")) max-output-bytes)
-    output
-    (let [byte-arr (.getBytes output "UTF-8")
-          safe-end (loop [i max-output-bytes]
-                     (if (<= i 0)
-                       0
-                       (let [b (bit-and (aget byte-arr i) 0xFF)]
-                         (if (not= (bit-and b 0xC0) 0x80)
-                           i
-                           (recur (dec i))))))
-          truncated (String. byte-arr 0 safe-end "UTF-8")]
-      (str truncated "\n[Output truncated at 50KB]"))))
+  (let [byte-arr (.getBytes output "UTF-8")]
+    (if (<= (alength byte-arr) max-output-bytes)
+      output
+      (let [safe-end (loop [i max-output-bytes]
+                       (if (<= i 0)
+                         0
+                         (let [b (bit-and (aget byte-arr i) 0xFF)]
+                           (if (not= (bit-and b 0xC0) 0x80)
+                             i
+                             (recur (dec i))))))
+            truncated (String. byte-arr 0 safe-end "UTF-8")]
+        (str truncated "\n[Output truncated at 50KB]")))))
 
 ;; ---------------------------------------------------------------------------
 ;; Execution

@@ -51,7 +51,7 @@
     (cond-> ["rg" "-n" "--no-heading" pattern]
       include (into ["--glob" include])
       true    (conj search-path))
-    (cond-> ["grep" "-rn" pattern]
+    (cond-> ["grep" "-Ern" pattern]
       include (into ["--include" include])
       true    (conj search-path))))
 
