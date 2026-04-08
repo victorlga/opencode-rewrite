@@ -11,6 +11,7 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
 - **Session 2** — Core data model: Message schemas and constructors, session manipulation functions, core.async pub/sub event bus
 - **Session 3** — LLM provider abstraction: Protocol definition, model metadata registry, SSE stream parsing utilities
 - **Session 4** — Anthropic provider: Full LLMProvider implementation with HTTP calls via hato, message format conversion, streaming via SSE/core.async, Integrant wiring
+- **Session 5** — Tool system: Tool framework with registry, multimethod dispatch, JSON Schema conversion via Malli. Three tool implementations: `read_file`, `write_file`, `glob`
 
 ## How It Works
 
@@ -33,12 +34,17 @@ This project translates the TypeScript OpenCode agent into idiomatic Clojure, on
    (Malli schemas,       (pure transforms,     ├── provider.clj (protocol)
     constructors)         token tracking)       ├── anthropic.clj (impl)
                                                 └── model_registry.clj
+   domain/tool.clj                             adapter/tool/
+   (registry, schemas,                         ├── file_read.clj (read_file)
+    multimethod dispatch,                      ├── file_write.clj (write_file)
+    JSON Schema convert)                       └── glob.clj (glob)
+
                          logic/streaming.clj
                          (SSE parsing → core.async channels)
 ```
 
 - **Domain layer** (`opencode.domain.*`) — Pure functions and Malli schemas. No I/O, no side effects. Messages are plain maps with namespaced keywords (`:message/role`, `:session/id`). Constructors validate via Malli and return anomaly maps on invalid data.
-- **Adapter layer** (`opencode.adapter.*`) — Side-effecting code at the edges. The `LLMProvider` protocol defines the interface for LLM completions and streaming. The Anthropic adapter implements the protocol with real HTTP calls via hato and SSE stream parsing via core.async. The model registry stores static model metadata (context windows, costs, capabilities).
+- **Adapter layer** (`opencode.adapter.*`) — Side-effecting code at the edges. The `LLMProvider` protocol defines the interface for LLM completions and streaming. The Anthropic adapter implements the protocol with real HTTP calls via hato and SSE stream parsing via core.async. The model registry stores static model metadata (context windows, costs, capabilities). Tool adapters (`adapter/tool/`) implement `execute-tool!` multimethods for file I/O and glob operations.
 - **Logic layer** (`opencode.logic.*`) — Orchestration with managed side effects. The event bus uses core.async channels with sliding buffers for pub/sub. SSE streaming utilities parse Anthropic server-sent events into channel-based event streams.
 - **Config** — EDN files read by Aero with `#env` tag literals. Malli validates at startup; invalid config returns cognitect anomaly maps.
 
@@ -65,14 +71,23 @@ clj -M:test
 clj-kondo --lint src test
 ```
 
-## Recent Changes (Session 4)
+## Recent Changes (Session 5)
 
-- Added `opencode.adapter.llm.anthropic` — Full `LLMProvider` implementation for the Anthropic Messages API:
-  - `messages->anthropic` / `anthropic-response->message` for bidirectional message format conversion
-  - `complete` — synchronous POST to `/v1/messages`, parses JSON response to domain assistant message
-  - `stream` — streaming POST with `{:stream true}`, SSE events parsed via `sse-events->channel!` and transformed into domain stream events (`:text-delta`, `:done`, `:error`)
-  - Tool call data is accumulated across `content_block_start` / `input_json_delta` / `content_block_stop` events and included in the final `:done` message
-  - HTTP error mapping to cognitect anomaly categories (401→forbidden, 429→busy, 500+→fault)
-  - Integrant component `:opencode/llm-provider` wired with dependency on `:opencode/config`
-- Updated `opencode.system` — Added `:opencode/llm-provider {:config (ig/ref :opencode/config)}` to system config
-- 36 tests, 132 assertions, 0 failures. clj-kondo: 0 errors, 0 warnings.
+- Added `opencode.domain.tool` — Tool framework:
+  - `ToolDef` / `ToolContext` Malli schemas for tool definitions and execution context
+  - Atom-backed registry with `register-tool!`, `get-tool`, `all-tools`, `reset-registry!`
+  - `tools-for-api` converts Malli parameter schemas to JSON Schema via `malli.json-schema/transform` for the Anthropic tool API
+  - `execute-tool!` multimethod dispatching on tool name string; `:default` returns `::anom/unsupported`
+- Added `opencode.adapter.tool.file-read` — `read_file` tool:
+  - Reads file content with optional line `:offset` and `:limit`
+  - Binary detection via null-byte scan of first 8KB
+  - Truncation at 50KB with guidance message
+  - Path resolution relative to project dir from context
+- Added `opencode.adapter.tool.file-write` — `write_file` tool:
+  - Creates or overwrites files, auto-creates parent directories via `babashka.fs/create-dirs`
+  - Gated behind `dangerous-mode?` context flag (returns `::anom/forbidden` when disabled)
+- Added `opencode.adapter.tool.glob` — `glob` tool:
+  - Finds files matching glob patterns via `babashka.fs/glob`
+  - Returns paths relative to search dir, sorted alphabetically
+  - Truncates at 200 results with count message
+- 61 tests, 175 assertions, 0 failures. clj-kondo: 0 errors, 0 warnings.
