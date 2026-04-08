@@ -5,6 +5,8 @@
   (:require
    [integrant.core :as ig]
    [opencode.adapter.llm.anthropic]
+   [opencode.adapter.persistence]
+   [opencode.adapter.ui.repl]
    [opencode.config]
    [opencode.logic.event-bus]))
 
@@ -15,9 +17,11 @@
 (def default-system-config
   "Default Integrant system configuration map.
    Each key corresponds to a component initialized via ig/init-key."
-  {:opencode/config    {}
-   :opencode/event-bus  {}
-   :opencode/llm-provider {:config (ig/ref :opencode/config)}})
+  {:opencode/config        {}
+   :opencode/event-bus      {}
+   :opencode/llm-provider   {:config (ig/ref :opencode/config)}
+   :opencode/ui             {}
+   :opencode/session-store  {}})
 
 (defn system-config
   "Returns the system configuration, optionally merging overrides."
