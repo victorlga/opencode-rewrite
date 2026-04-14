@@ -27,4 +27,4 @@ FROM deps AS app
 
 COPY . /app/
 
-ENTRYPOINT ["clj", "-M:run"]
+ENTRYPOINT ["clj", "-M:run", "-m", "opencode.main"]
