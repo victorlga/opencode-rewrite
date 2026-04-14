@@ -158,6 +158,12 @@ clj -M:run
 
 # Build uberjar
 clj -T:build uber
+
+# Run with Docker (interactive)
+docker compose up
+
+# Run with Docker + dangerous mode
+docker compose run --rm opencode --dangerously-skip-permissions
 ```
 
 ## Reference Material

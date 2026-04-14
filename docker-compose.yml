@@ -1,0 +1,11 @@
+services:
+  opencode:
+    build: .
+    stdin_open: true
+    tty: true
+    env_file:
+      - .env
+    volumes:
+      - ./workspace:/workspace
+    environment:
+      - OPENCODE_PROJECT_DIR=/workspace

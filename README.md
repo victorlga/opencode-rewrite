@@ -84,6 +84,22 @@ clj -M -m opencode.main --dangerously-skip-permissions
 clj -M:dev
 ```
 
+### Run with Docker
+
+```bash
+# 1. Set your API key
+cp .env.example .env
+# Edit .env and add your ANTHROPIC_API_KEY
+
+# 2. (Optional) Place project files in ./workspace/ for the agent to operate on
+
+# 3. Start the interactive agent
+docker compose up
+
+# Run with dangerous mode (skip permission prompts)
+docker compose run --rm opencode --dangerously-skip-permissions
+```
+
 ## How to Test
 
 ```bash
