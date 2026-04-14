@@ -1,0 +1,13 @@
+.git
+.cpcache
+target
+.clj-kondo/.cache
+.idea
+.vscode
+*.iml
+.env
+.env.local
+.DS_Store
+.nrepl-port
+.portal
+workspace
