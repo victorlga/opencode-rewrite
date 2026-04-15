@@ -158,13 +158,49 @@ clj -M:run
 
 # Build uberjar
 clj -T:build uber
+```
 
-# Run with Docker (interactive)
+## Docker Compose
+
+The project includes `Dockerfile` and `docker-compose.yml` for running the application in a container.
+The multi-stage `Dockerfile` uses Eclipse Temurin JDK 21, installs the Clojure CLI and ripgrep,
+and caches dependencies in a separate layer so rebuilds are fast when only source files change.
+The `docker-compose.yml` mounts a local `./workspace` directory into the container at `/workspace`
+and sets `OPENCODE_PROJECT_DIR=/workspace` so the agent operates on your host files.
+
+### Setting up the API key
+
+The container reads environment variables from a `.env` file (see `.env.example`).
+Copy the example and add your Anthropic API key:
+
+```bash
+cp .env.example .env
+# Edit .env and set your key:
+#   ANTHROPIC_API_KEY=sk-ant-...
+```
+
+### Running the container
+
+```bash
+# Build and start (interactive, with TTY for the REPL UI)
 docker compose up
 
-# Run with Docker + dangerous mode
+# Rebuild after dependency or Dockerfile changes
+docker compose up --build
+```
+
+### Dangerous mode (skip permission prompts)
+
+By default the agent asks for user approval before executing tools.
+To skip all permission checks (useful for automated / CI workflows), pass the
+`--dangerously-skip-permissions` flag:
+
+```bash
 docker compose run --rm opencode --dangerously-skip-permissions
 ```
+
+This runs a one-off container that is removed after exit (`--rm`).
+The flag is forwarded to the application entrypoint defined in the `Dockerfile`.
 
 ## Reference Material
 
